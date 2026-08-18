@@ -1,0 +1,21 @@
+# ==============================================================================
+# FADEC Telemetry Analyzer - Core Dependencies
+# ==============================================================================
+
+# GUI Framework & Tools
+PyQt5>=5.15.11
+PyQt5-sip>=12.18.0
+
+# High-Performance Graphics & Hardware Acceleration (150+ FPS)
+pyqtgraph>=0.14.0
+PyOpenGL>=3.1.10
+
+# Data Processing, Numerical Vectorization & LTTB Downsampling
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Scientific Visualization (Radar Z-Score & Correlation Heatmap)
+matplotlib>=3.7.0
+
+# Excel File (.xlsx) Support for Data & Event Records
+openpyxl>=3.1.5
