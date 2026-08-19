@@ -211,6 +211,31 @@ def kaynak_yolu(goreceli_yol):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), goreceli_yol)
 
 
+def csv_ayrac_tespit_et(dosya_yolu):
+    """
+    @brief CSV dosyasının ilk satırlarını analiz ederek ayraç karakterini (virgül, noktalı virgül, tab) otomatik tespit eder.
+    @param dosya_yolu (str) Taranacak CSV dosya yolu.
+    @return (str) Tespit edilen ayraç karakteri (varsayılan: ',').
+    """
+    try:
+        with open(dosya_yolu, 'r', encoding='utf-8', errors='ignore') as f:
+            for _ in range(5):
+                line = f.readline()
+                if line and line.strip():
+                    sayi_noktali = line.count(';')
+                    sayi_virgul = line.count(',')
+                    sayi_tab = line.count('\t')
+                    if sayi_noktali > sayi_virgul and sayi_noktali > sayi_tab:
+                        return ';'
+                    elif sayi_tab > sayi_virgul and sayi_tab > sayi_noktali:
+                        return '\t'
+                    elif sayi_virgul > 0:
+                        return ','
+    except Exception:
+        pass
+    return ','
+
+
 class ZamanEkseniItem(pg.AxisItem):
     """
     @brief X Eksenindeki zaman indekslerini dinamik Saat:Dakika formatına çeviren özel eksen bileşeni.
@@ -523,8 +548,9 @@ class YuklemeThread(QtCore.QThread):
             # 1. DATA DOSYASI OKUMA
             data_chunks = []
             if self.data_yolu.lower().endswith('.csv'):
+                ayrac_data = csv_ayrac_tespit_et(self.data_yolu)
                 with open(self.data_yolu, 'r', encoding='utf-8', errors='ignore') as f1:
-                    for chunk in pd.read_csv(f1, chunksize=50000):
+                    for chunk in pd.read_csv(f1, sep=ayrac_data, chunksize=50000):
                         data_chunks.append(chunk)
                         b_read = f1.tell()
                         pct = int((b_read / total_bytes) * 100)
@@ -539,8 +565,9 @@ class YuklemeThread(QtCore.QThread):
             # 2. EVENT DOSYASI OKUMA
             event_chunks = []
             if self.event_yolu.lower().endswith('.csv'):
+                ayrac_event = csv_ayrac_tespit_et(self.event_yolu)
                 with open(self.event_yolu, 'r', encoding='utf-8', errors='ignore') as f2:
-                    for chunk in pd.read_csv(f2, chunksize=100000):
+                    for chunk in pd.read_csv(f2, sep=ayrac_event, chunksize=100000):
                         event_chunks.append(chunk)
                         b_read = size_data + f2.tell()
                         pct = min(int((b_read / total_bytes) * 100), 95)
