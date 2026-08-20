@@ -37,8 +37,8 @@ import pyqtgraph as pg
 from pyqtgraph import mkPen
 from pyqtgraph.exporters import ImageExporter
 
-# PyQtGraph Donanım Hızlandırma Ayarları (OpenGL + C++ Painter)
-pg.setConfigOptions(useOpenGL=True, enableExperimental=True, antialias=False)
+# PyQtGraph Yüksek Performanslı Çizim Ayarları (LTTB + QPainter)
+pg.setConfigOptions(useOpenGL=False, enableExperimental=False, antialias=True)
 
 # ==============================================================================
 # 3. PYQT5 ARAYÜZ BİLEŞENLERİ
@@ -141,16 +141,65 @@ QPushButton:hover {
 QPushButton:pressed { background-color: #00ccaa; }
 
 QComboBox {
-    background-color: #3a3a3a;
-    border: 2px solid #555555;
-    padding: 4px 12px;
+    background-color: #2b2b2b;
+    border: 1px solid #444444;
+    padding: 4px 10px;
     border-radius: 6px;
     color: #ffffff;
     font-size: 11pt;
     font-weight: bold;
     min-height: 28px;
 }
-QComboBox:hover { border: 2px solid #777777; background-color: #444444; }
+QComboBox:hover { border: 1px solid #00ffcc; background-color: #333333; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 25px;
+    border-left: 1px solid #444444;
+}
+QComboBox QAbstractItemView {
+    background-color: #1e1e1e;
+    color: #ffffff;
+    selection-background-color: #00ffcc;
+    selection-color: #000000;
+    border: 1px solid #444444;
+    outline: none;
+    padding: 4px;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 26px;
+    padding: 4px 8px;
+    color: #ffffff;
+    background-color: #1e1e1e;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #2d2d30;
+    color: #00ffcc;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #00ffcc;
+    color: #000000;
+    font-weight: bold;
+}
+
+QCheckBox {
+    color: #ffffff;
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #555555;
+    background-color: #252526;
+    border-radius: 3px;
+}
+QCheckBox::indicator:hover {
+    border: 1px solid #00ffcc;
+}
+QCheckBox::indicator:checked {
+    background-color: #00ffcc;
+    border: 1px solid #00ffcc;
+}
 
 QTabWidget::pane { border: 1px solid #333333; background: #181818; }
 QTabBar::tab {
@@ -1608,6 +1657,18 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         ilk_saniye = hatalıVerilerZamanAraligi[0]
         son_saniye = hatalıVerilerZamanAraligi[-1]
         self.hata_grafik.plotItem.vb.setXRange(ilk_saniye, son_saniye, padding=0.01)
+
+        try:
+            tum_y_min = min(float(np.nanmin(hatalıVeriler[s].values)) for s in self.secili_sensorler)
+            tum_y_max = max(float(np.nanmax(hatalıVeriler[s].values)) for s in self.secili_sensorler)
+            y_fark = tum_y_max - tum_y_min
+            if y_fark == 0:
+                y_fark = 1.0
+            self.hata_grafik.plotItem.vb.setYRange(tum_y_min - y_fark * 0.08, tum_y_max + y_fark * 0.08, padding=0)
+        except Exception:
+            self.hata_grafik.enableAutoRange(axis=pg.ViewBox.YAxis)
+
+        self.HataGrafikMinMaxCiz(self.secili_sensorler)
 
     def radar_goster(self):
         """
