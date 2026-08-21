@@ -753,12 +753,24 @@ class LimitPenceresi(QtWidgets.QDialog):
         kolonlar = df.columns if df is not None else []
         self.ui.btn_limitUygula.clicked.connect(self.degisiklikleriUygula)
 
-        for kolon in kolonlar:
-            if kolon.startswith("S"):
-                item = QtWidgets.QListWidgetItem(kolon)
-                item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-                item.setCheckState(QtCore.Qt.Unchecked)
-                self.ui.limit_sensor_listesi.addItem(item)
+        if hasattr(self.ui, 'btn_limitKaldir'):
+            self.ui.btn_limitKaldir.clicked.connect(self.limitleriKaldir)
+
+        tanimli = getattr(parent, 'tanimli_sensorler', None)
+        if tanimli:
+            for sensor in tanimli:
+                if sensor in kolonlar:
+                    item = QtWidgets.QListWidgetItem(sensor)
+                    item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+                    item.setCheckState(QtCore.Qt.Unchecked)
+                    self.ui.limit_sensor_listesi.addItem(item)
+        else:
+            for kolon in kolonlar:
+                if kolon.startswith("S"):
+                    item = QtWidgets.QListWidgetItem(kolon)
+                    item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+                    item.setCheckState(QtCore.Qt.Unchecked)
+                    self.ui.limit_sensor_listesi.addItem(item)
 
     def degisiklikleriUygula(self):
         """
@@ -769,9 +781,16 @@ class LimitPenceresi(QtWidgets.QDialog):
             item = self.ui.limit_sensor_listesi.item(i)
             if item.checkState() == QtCore.Qt.Checked:
                 secilenler.append(item.text())
-
         if self.parent() is not None and hasattr(self.parent(), 'HataGrafikMinMaxCiz'):
             self.parent().HataGrafikMinMaxCiz(secilenler)
+        self.accept()
+
+    def limitleriKaldir(self):
+        """
+        @brief Grafikteki tüm min/max limit çizgilerini temizler ve pencereyi kapatır.
+        """
+        if self.parent() is not None and hasattr(self.parent(), 'HataGrafikMinMaxCiz'):
+            self.parent().HataGrafikMinMaxCiz([])  # Boş liste göndererek tüm limit çizgilerini anında siler
         self.accept()
 
 
@@ -1103,15 +1122,16 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         @brief AnaPencere kurucu fonksiyonu. Arayüzü ve tüm sinyalleri başlatır.
         """
         super().__init__()
-        self.LIMITLER = {
-            "S4_Turbin_Cikis_Sicaklik": (1385.0, 1440.0)
-        }
+
 
         self.setupUi(self)
         self.setStyleSheet(KOYU_TEMA_QSS)
+        self.parametreleri_yukle()
         self.splitter.setSizes([300, 500])
         if hasattr(self, 'splitter_ana_csv'):
             self.splitter_ana_csv.setSizes([550, 350])
+        if hasattr(self, 'splitter_ust_grafik'):
+            self.splitter_ust_grafik.setSizes([380, 1100])
         if hasattr(self, 'splitter_alt_tablo'):
             self.splitter_alt_tablo.setSizes([1200, 450])
         if hasattr(self, 'splitter_ana_hata'):
@@ -1125,6 +1145,22 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.tabWidget.setCurrentIndex(0)
 
         # Tablo ve Grafik Görünüm Ayarları
+        if hasattr(self, 'tbl_log_oturumlar'):
+            self.tbl_log_oturumlar.verticalHeader().setVisible(False)
+            self.tbl_log_oturumlar.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+            self.tbl_log_oturumlar.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+            self.tbl_log_oturumlar.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            self.tbl_log_oturumlar.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
+            self.oturum_dosyalari = []
+            if hasattr(self, 'tbl_log_oturumlar'):
+                self.baslangic_klasorunu_tara()
+            if hasattr(self, 'btn_loglari_yukle'):
+                self.btn_loglari_yukle.clicked.connect(self.secili_oturumu_yukle)
+
+
+
+
         self.tbl_istatistik.verticalHeader().setVisible(False)
         self.tbl_istatistik.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         self.tbl_istatistik.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
@@ -1818,12 +1854,14 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     renk_kodu = cizgi_nesnesi.opts['pen'].color().name()
 
                     ek_metin = ""
-                    if kolonadi == "S4_Turbin_Cikis_Sicaklik":
-                        if deger > 1440:
-                            sapma = deger - 1440
+                    # JSON'da bu sensör için limit tanımlıysa aşım kontrolü yap:
+                    if hasattr(self, 'LIMITLER') and kolonadi in self.LIMITLER:
+                        alt_lim, ust_lim = self.LIMITLER[kolonadi]
+                        if deger > ust_lim:
+                            sapma = deger - ust_lim
                             ek_metin = f" <b style='color: #FF4500;'>(Aşım: +{sapma:.2f})</b>"
-                        elif deger < 1385:
-                            sapma = 1385 - deger
+                        elif deger < alt_lim:
+                            sapma = alt_lim - deger
                             ek_metin = f" <b style='color: #FF4500;'>(Aşım: -{sapma:.2f})</b>"
 
                     gosterilecek_metin += f"<span style='color: {renk_kodu};'>{kolonadi} : {deger:.2f}{ek_metin}</span><br>"
@@ -1857,8 +1895,13 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if hasattr(self, 'hata_kategorileri'):
             haric_tutulacaklar.extend(self.hata_kategorileri)
 
-        for kolon in self.df.columns:
-            if kolon not in haric_tutulacaklar:
+        # Eğer JSON'da tanımlı sensörler varsa onları listele, yoksa tüm CSV kolonlarını listele:
+        gosterilecek_sensorler = getattr(self, 'tanimli_sensorler', None)
+        if not gosterilecek_sensorler:
+            gosterilecek_sensorler = [col for col in self.df.columns if col not in haric_tutulacaklar]
+
+        for kolon in gosterilecek_sensorler:
+            if kolon in self.df.columns:
                 item = QtWidgets.QListWidgetItem(kolon)
                 item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
                 item.setCheckState(QtCore.Qt.Unchecked)
@@ -2309,6 +2352,174 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         for renk, scatter in self.aktif_timeline_scatter.items():
             if renk not in renk_gruplari:
                 scatter.setData(x=[], y=[])
+
+    def baslangic_klasorunu_tara(self):
+        """
+        @brief C++'tan gelen klasör argümanını veya varsayılan yolu algılar ve taratır.
+        """
+        # 1. C++'tan veya terminalden bir yol gönderildi mi?
+        if len(sys.argv) > 1 and os.path.exists(sys.argv[1]) and os.path.isdir(sys.argv[1]):
+            hedef_klasor = sys.argv[1]
+        # 2. Gönderilmediyse varsayılan klasörlere bak:
+        elif os.path.exists(r"C:\kayıtlar"):
+            hedef_klasor = r"C:\kayıtlar"
+        elif os.path.exists(r"C:\kayitlar"):
+            hedef_klasor = r"C:\kayitlar"
+        else:
+            # Geliştirme ortamı / geçerli klasör
+            hedef_klasor = os.path.dirname(os.path.abspath(__file__))
+
+        self.klasoru_tara_ve_listele(hedef_klasor)
+
+    def klasoru_tara_ve_listele(self, klasor_yolu):
+        """
+        @brief Belirtilen klasördeki CSV dosyalarını tarar, dataN ve eventN çiftlerini akıllı eşleştirip sol tabloya doldurur.
+        @param klasor_yolu (str) Taranacak klasörün dosya yolu.
+        """
+        import re
+        if not hasattr(self, 'tbl_log_oturumlar'):
+            return
+        if not os.path.exists(klasor_yolu) or not os.path.isdir(klasor_yolu):
+            return
+
+        self.tbl_log_oturumlar.setRowCount(0)
+        self.oturum_dosyalari.clear()
+
+        tum_csvler = [f for f in os.listdir(klasor_yolu) if f.lower().endswith('.csv')]
+        if not tum_csvler:
+            return
+
+        data_dosyalari = {}
+        event_dosyalari = {}
+
+        # Dosya isimlerini regex ile ayrıştır:
+        # Örnek: "01_01_2025_18_16_00_data1.csv" -> Tarih: "01_01_2025_18_16_00", No: "1"
+        for dosya in tum_csvler:
+            tam_yol = os.path.join(klasor_yolu, dosya)
+            dosya_kucuk = dosya.lower()
+
+            match = re.search(r"^(.*?)(?:_|\b)(data|event)(\d*)\.csv$", dosya_kucuk)
+            if match:
+                on_ek = match.group(1).rstrip("_")
+                tur = match.group(2)
+                numara = match.group(3)
+                anahtar = f"{on_ek}__{numara}"
+                if tur == "data":
+                    data_dosyalari[anahtar] = (tam_yol, dosya)
+                else:
+                    event_dosyalari[anahtar] = (tam_yol, dosya)
+            else:
+                # Farklı isimli genel dosyalar için yedek eşleme
+                if "data" in dosya_kucuk:
+                    anahtar = dosya_kucuk.replace("data", "ANAHTAR")
+                    data_dosyalari[anahtar] = (tam_yol, dosya)
+                elif "event" in dosya_kucuk:
+                    anahtar = dosya_kucuk.replace("event", "ANAHTAR")
+                    event_dosyalari[anahtar] = (tam_yol, dosya)
+
+        # Tüm çift anahtarlarını sırala ve sol tabloya yaz
+        tum_anahtarlar = sorted(list(set(list(data_dosyalari.keys()) + list(event_dosyalari.keys()))))
+
+        for anahtar in tum_anahtarlar:
+            data_yol, data_ad = data_dosyalari.get(anahtar, (None, "-"))
+            event_yol, event_ad = event_dosyalari.get(anahtar, (None, "-"))
+
+            self.oturum_dosyalari.append({
+                "data_yolu": data_yol,
+                "event_yolu": event_yol,
+                "data_adi": data_ad,
+                "event_adi": event_ad
+            })
+
+            satir = self.tbl_log_oturumlar.rowCount()
+            self.tbl_log_oturumlar.insertRow(satir)
+
+            item_data = QtWidgets.QTableWidgetItem(data_ad)
+            item_data.setTextAlignment(QtCore.Qt.AlignCenter)
+            item_event = QtWidgets.QTableWidgetItem(event_ad)
+            item_event.setTextAlignment(QtCore.Qt.AlignCenter)
+
+            self.tbl_log_oturumlar.setItem(satir, 0, item_data)
+            self.tbl_log_oturumlar.setItem(satir, 1, item_event)
+
+    def secili_oturumu_yukle(self):
+        """
+        @brief Sol tablodan seçili satırdaki data ve event dosyalarını otomatik birleştirip yükler.
+        """
+        secili_satir = self.tbl_log_oturumlar.currentRow()
+
+        # Eğer kullanıcı hiçbir satır seçmeden butona bastıysa uyar:
+        if secili_satir == -1:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Seçim Yapılmadı",
+                "Lütfen önce sol tablodan yüklemek istediğiniz bir test oturumunu (satırı) seçiniz."
+            )
+            return
+
+        if secili_satir >= len(self.oturum_dosyalari):
+            return
+
+        secili_oturum = self.oturum_dosyalari[secili_satir]
+        data_yolu = secili_oturum["data_yolu"]
+        event_yolu = secili_oturum["event_yolu"]
+
+        if not data_yolu or not os.path.exists(data_yolu):
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Dosya Bulunamadı",
+                f"Data log dosyası bulunamadı:\n{secili_oturum['data_adi']}"
+            )
+            return
+
+        # Arka planda birleştirme ve yükleme motorunu çalıştırır
+        self.verileri_yukle_ve_birlestir(data_yolu, event_yolu)
+
+    def parametreleri_yukle(self):
+        """
+        @brief C++'tan gelen klasördeki veya argümandaki parameters.json dosyasını otomatik okur.
+        """
+        import sys
+        import json
+
+        json_yolu = None
+
+        # 1. C++'tan bir argüman (sys.argv) geldi mi?
+        if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+            gelen_yol = sys.argv[1]
+
+            # Eğer C++ bir klasör yolu gönderdiyse (Örn: "C:/kayıtlar"):
+            if os.path.isdir(gelen_yol):
+                aday_json = os.path.join(gelen_yol, "parameters.json")
+                if os.path.exists(aday_json):
+                    json_yolu = aday_json
+            # Eğer C++ doğrudan .json dosyasını gönderdiyse:
+            elif gelen_yol.lower().endswith(".json"):
+                json_yolu = gelen_yol
+
+        # 2. C++ bir şey göndermediyse varsayılan yerlere bak (Fallback):
+        if not json_yolu:
+            olasi_yollar = [
+                r"C:\kayıtlar\parameters.json",
+                r"C:\kayitlar\parameters.json",
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "parameters.json")
+            ]
+            for yol in olasi_yollar:
+                if os.path.exists(yol):
+                    json_yolu = yol
+                    break
+
+        # 3. Dosya bulunduysa oku ve limitleri / sensörleri hafızaya al:
+        if json_yolu and os.path.exists(json_yolu):
+            try:
+                with open(json_yolu, 'r', encoding='utf-8') as f:
+                    param_data = json.load(f)
+                    self.LIMITLER = {k: (float(v[0]), float(v[1])) for k, v in param_data.items() if len(v) >= 2}
+                    self.tanimli_sensorler = list(param_data.keys())
+                    print(
+                        f"C++ / Klasör üzerinden {len(self.tanimli_sensorler)} adet sensör ve limit başarıyla yüklendi: {json_yolu}")
+            except Exception as e:
+                print(f"JSON okuma hatası: {e}")
 
 
 # ==============================================================================

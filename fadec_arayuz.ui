@@ -53,6 +53,32 @@
            <number>10</number>
           </property>
           <item>
+           <widget class="QPushButton" name="btn_loglari_yukle">
+            <property name="minimumSize">
+             <size>
+              <width>140</width>
+              <height>38</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>140</width>
+              <height>38</height>
+             </size>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="text">
+             <string>Logları Yükle</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPushButton" name="btn_dosyaYukle">
             <property name="minimumSize">
              <size>
@@ -231,13 +257,39 @@
           <property name="handleWidth">
            <number>6</number>
           </property>
-          <widget class="PlotWidget" name="analiz_grafigi" native="true">
-           <property name="minimumSize">
-            <size>
-             <width>0</width>
-             <height>200</height>
-            </size>
+          <widget class="QSplitter" name="splitter_ust_grafik">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
            </property>
+           <property name="handleWidth">
+            <number>6</number>
+           </property>
+           <widget class="QTableWidget" name="tbl_log_oturumlar">
+            <property name="minimumSize">
+             <size>
+              <width>320</width>
+              <height>200</height>
+             </size>
+            </property>
+            <column>
+             <property name="text">
+              <string>Data Log</string>
+             </property>
+            </column>
+            <column>
+             <property name="text">
+              <string>Event Log</string>
+             </property>
+            </column>
+           </widget>
+           <widget class="PlotWidget" name="analiz_grafigi" native="true">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>200</height>
+             </size>
+            </property>
+           </widget>
           </widget>
           <widget class="QSplitter" name="splitter_alt_tablo">
            <property name="orientation">
@@ -422,6 +474,32 @@ QSplitter::handle:hover {
            </widget>
           </item>
           <item>
+           <widget class="QPushButton" name="btn_hata_silme">
+            <property name="minimumSize">
+             <size>
+              <width>140</width>
+              <height>38</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>140</width>
+              <height>38</height>
+             </size>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="text">
+             <string>Tümünü Sil</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="horizontalSpacer_hata">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -517,7 +595,14 @@ QSplitter::handle:hover {
             <widget class="QListWidget" name="list_sensorSecim"/>
            </item>
            <item>
-            <widget class="QPushButton" name="btn_TumunuSilme">
+            <widget class="QPushButton" name="btn_genel_incele">
+             <property name="text">
+              <string>İncele</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btn_genel_tumunu_silme">
              <property name="text">
               <string>Tümünü Sil</string>
              </property>

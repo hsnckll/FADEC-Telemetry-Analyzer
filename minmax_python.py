@@ -45,7 +45,11 @@ class Ui_Dialog(object):
         self.limit_sensor_listesi.setObjectName("limit_sensor_listesi")
         self.verticalLayout.addWidget(self.limit_sensor_listesi)
 
-        # 3. Onay Butonu
+        # 3. Butonlar Düzeni (Uygula Daha Geniş, Kaldır Daha Dar)
+        self.layout_butonlar = QtWidgets.QHBoxLayout()
+        self.layout_butonlar.setSpacing(10)
+        self.layout_butonlar.setObjectName("layout_butonlar")
+
         self.btn_limitUygula = QtWidgets.QPushButton(Dialog)
         self.btn_limitUygula.setMinimumSize(QtCore.QSize(0, 42))
         font_btn = QtGui.QFont()
@@ -54,7 +58,16 @@ class Ui_Dialog(object):
         self.btn_limitUygula.setFont(font_btn)
         self.btn_limitUygula.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.btn_limitUygula.setObjectName("btn_limitUygula")
-        self.verticalLayout.addWidget(self.btn_limitUygula)
+        self.layout_butonlar.addWidget(self.btn_limitUygula, 2)
+
+        self.btn_limitKaldir = QtWidgets.QPushButton(Dialog)
+        self.btn_limitKaldir.setMinimumSize(QtCore.QSize(0, 42))
+        self.btn_limitKaldir.setFont(font_btn)
+        self.btn_limitKaldir.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.btn_limitKaldir.setObjectName("btn_limitKaldir")
+        self.layout_butonlar.addWidget(self.btn_limitKaldir, 1)
+
+        self.verticalLayout.addLayout(self.layout_butonlar)
 
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
@@ -65,6 +78,7 @@ class Ui_Dialog(object):
         self.lbl_baslik.setText(_translate("Dialog", "⚙️ Limit Aşımı Kontrolü"))
         self.lbl_aciklama.setText(_translate("Dialog", "Grafikte limit çizgilerini görmek istediğiniz sensörleri işaretleyiniz."))
         self.btn_limitUygula.setText(_translate("Dialog", "✅ Değişiklikleri Uygula"))
+        self.btn_limitKaldir.setText(_translate("Dialog", "❌ Limitleri Kaldır"))
 
 # Geriye dönük uyumluluk alias
 Ui_MinMaxDialog = Ui_Dialog

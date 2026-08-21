@@ -19,3 +19,8 @@ env/
 
 # Temporary files
 *.log
+*.rar
+*.zip
+*.7z
+*.tar.gz
+*.csv
