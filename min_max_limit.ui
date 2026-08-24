@@ -6,61 +6,132 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>552</width>
-    <height>545</height>
+    <width>480</width>
+    <height>560</height>
    </rect>
   </property>
-  <property name="windowTitle">
-   <string>Dialog</string>
+  <property name="minimumSize">
+   <size>
+    <width>480</width>
+    <height>560</height>
+   </size>
   </property>
-  <widget class="QLabel" name="label">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>0</y>
-     <width>111</width>
-     <height>41</height>
-    </rect>
+  <property name="windowTitle">
+   <string>FADEC - Limit Kontrolü İçin Sensör Seçimi</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>14</number>
    </property>
-   <property name="font">
-    <font>
-     <family>Bell MT</family>
-     <pointsize>16</pointsize>
-    </font>
+   <property name="leftMargin">
+    <number>20</number>
    </property>
-   <property name="text">
-    <string>Sensörler</string>
+   <property name="topMargin">
+    <number>20</number>
    </property>
-  </widget>
-  <widget class="QListWidget" name="limit_sensor_listesi">
-   <property name="geometry">
-    <rect>
-     <x>110</x>
-     <y>40</y>
-     <width>341</width>
-     <height>341</height>
-    </rect>
+   <property name="rightMargin">
+    <number>20</number>
    </property>
-  </widget>
-  <widget class="QPushButton" name="btn_limitUygula">
-   <property name="geometry">
-    <rect>
-     <x>180</x>
-     <y>430</y>
-     <width>191</width>
-     <height>51</height>
-    </rect>
+   <property name="bottomMargin">
+    <number>20</number>
    </property>
-   <property name="font">
-    <font>
-     <family>Myanmar Text</family>
-     <pointsize>12</pointsize>
-    </font>
-   </property>
-   <property name="text">
-    <string>Değişiklikleri Uygula</string>
-   </property>
-  </widget>
+   <item>
+    <layout class="QVBoxLayout" name="layout_baslik">
+     <property name="spacing">
+      <number>4</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="lbl_baslik">
+       <property name="font">
+        <font>
+         <pointsize>13</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #00ffcc;</string>
+       </property>
+       <property name="text">
+        <string>⚙️ Limit Aşımı Kontrolü</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="lbl_aciklama">
+       <property name="font">
+        <font>
+         <pointsize>9</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #aaaaaa;</string>
+       </property>
+       <property name="text">
+        <string>Grafikte limit çizgilerini görmek istediğiniz sensörleri işaretleyiniz.</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="Line" name="cizgi">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QListWidget" name="limit_sensor_listesi"/>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="layout_butonlar">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <item>
+      <widget class="QPushButton" name="btn_limitUygula">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>42</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>✅ Değişiklikleri Uygula</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_limitKaldir">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>42</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>11</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>❌ Limitleri Kaldır</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
  </widget>
  <resources/>
  <connections/>

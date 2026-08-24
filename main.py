@@ -35,7 +35,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pyqtgraph as pg
 from pyqtgraph import mkPen
-from pyqtgraph.exporters import ImageExporter
+from grafik_class import SensorGrafikKarti, GridMdiSubWindow, kareli_izgara_deseni_olustur
 
 # PyQtGraph Yüksek Performanslı Çizim Ayarları (LTTB + QPainter)
 pg.setConfigOptions(useOpenGL=False, enableExperimental=False, antialias=True)
@@ -50,7 +50,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QListWidgetItem, QSplashScreen, QVBoxLayout, QHBoxLayout
 )
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon, QPixmap, QBrush, QColor, QFont
-
+from pyqtgraph.exporters import ImageExporter
 # ==============================================================================
 # 4. KULLANICI ARAYÜZÜ (UI) MODÜLLERİ
 # ==============================================================================
@@ -238,6 +238,23 @@ QScrollBar::handle:horizontal, QScrollBar::handle:vertical {
     min-width: 20px;
 }
 QScrollBar::handle:hover { background-color: #777777; }
+
+QMdiArea, #tab_4 {
+    background-color: #0e0e10;
+    border: none;
+}
+QMdiSubWindow {
+    background-color: #1a1a1a;
+    border: 1px solid #383838;
+    border-radius: 4px;
+}
+QMdiSubWindow:active {
+    border: 1px solid #00ffcc;
+}
+QMdiSubWindow QLabel, QMdiSubWindow > QWidget {
+    background-color: transparent;
+    background: transparent;
+}
 """
 
 
@@ -1126,6 +1143,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
         self.setStyleSheet(KOYU_TEMA_QSS)
+        self.LIMITLER={}
         self.parametreleri_yukle()
         self.splitter.setSizes([300, 500])
         if hasattr(self, 'splitter_ana_csv'):
@@ -1173,6 +1191,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         # Buton Bağlantıları
         self.btn_genel_incele.clicked.connect(self.genel_grafik_ciz)
         self.btn_genel_tumunu_silme.clicked.connect(self.genel_secimleri_temizle)
+        if hasattr(self, 'btn_genel_png'):
+            self.btn_genel_png.clicked.connect(self.genel_grafigi_kaydet)
         self.btn_png_kaydet.clicked.connect(self.grafigiKaydet)
         self.btn_silme.clicked.connect(self.tamamensilme)
         self.btn_BolgeSec.clicked.connect(self.BolgeSecme)
@@ -1185,6 +1205,59 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.HataBlok_List.itemClicked.connect(self.hataBlokunaBasildi)
         self.btn_hata_silme.clicked.connect(self.hata_grafik_temizle)
 
+        # Serbest Çalışma Alanı (QMdiArea Dashboard) Bağlantıları
+        if hasattr(self, 'mdi_area_dashboard'):
+            self.mdi_area_dashboard.setBackground(kareli_izgara_deseni_olustur(25))
+            self.mdi_area_dashboard.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+            self.mdi_area_dashboard.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+
+            def mdi_kaydirma_guncelle():
+                if not hasattr(self, 'mdi_area_dashboard'):
+                    return
+                
+                cur_h = self.mdi_area_dashboard.horizontalScrollBar().value()
+                cur_v = self.mdi_area_dashboard.verticalScrollBar().value()
+
+                vp_w = max(10, self.mdi_area_dashboard.viewport().width())
+                vp_h = max(10, self.mdi_area_dashboard.viewport().height())
+
+                max_world_x = vp_w
+                max_world_y = vp_h
+
+                for sub in self.mdi_area_dashboard.subWindowList():
+                    if sub.isVisible() and not sub.isMinimized():
+                        world_x = sub.x() + cur_h
+                        world_y = sub.y() + cur_v
+                        max_world_x = max(max_world_x, world_x + sub.width() + 25)
+                        max_world_y = max(max_world_y, world_y + sub.height() + 25)
+
+                h_max = max(0, max_world_x - vp_w)
+                v_max = max(0, max_world_y - vp_h)
+
+                self.mdi_area_dashboard.horizontalScrollBar().setRange(0, h_max)
+                self.mdi_area_dashboard.verticalScrollBar().setRange(0, v_max)
+                self.mdi_area_dashboard.horizontalScrollBar().setPageStep(vp_w)
+                self.mdi_area_dashboard.verticalScrollBar().setPageStep(vp_h)
+                self.mdi_area_dashboard.horizontalScrollBar().setSingleStep(25)
+                self.mdi_area_dashboard.verticalScrollBar().setSingleStep(25)
+
+            self.mdi_area_dashboard.guncelle_kaydirma_araligi = mdi_kaydirma_guncelle
+
+            eski_mdi_resize = self.mdi_area_dashboard.resizeEvent
+            def ozel_mdi_resize(ev):
+                eski_mdi_resize(ev)
+                mdi_kaydirma_guncelle()
+            self.mdi_area_dashboard.resizeEvent = ozel_mdi_resize
+
+        if hasattr(self, 'btn_dashboard_grafik_ekle'):
+            self.btn_dashboard_grafik_ekle.clicked.connect(self.dashboard_grafik_ekle_dialog)
+        if hasattr(self, 'btn_dashboard_diz_karo'):
+            self.btn_dashboard_diz_karo.clicked.connect(self.dashboard_yan_yana_diz)
+        if hasattr(self, 'btn_dashboard_diz_basamak'):
+            self.btn_dashboard_diz_basamak.clicked.connect(self.dashboard_basamakla)
+        if hasattr(self, 'btn_dashboard_temizle'):
+            self.btn_dashboard_temizle.clicked.connect(self.dashboard_tumunu_temizle)
+
         self.secimBolgesi = None
         self.df = None
         self.aktif_cizgiler = {}
@@ -1193,6 +1266,9 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         self.analiz_grafigi.addLegend()
         self.analiz_grafigi.showGrid(x=True, y=True, alpha=0.3)
+        self.analiz_grafigi.plotItem.setMenuEnabled(False)
+        self.hata_grafik.plotItem.setMenuEnabled(False)
+        self.GenelHataBloklari.plotItem.setMenuEnabled(False)
 
         # Tablo Seçim Optimizasyonu
         self.veri_tablosu.horizontalHeader().setHighlightSections(False)
@@ -1250,6 +1326,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         # Fare Sürükleme ve Bırakma Kancası (Mouse Drag-Release Hook)
         vb = self.GenelHataBloklari.getViewBox()
         eski_mouse_drag = vb.mouseDragEvent
+
+
+        # Serbest Çalışma Alanı (Dashboard) Başlatıcıları
+        self.dashboard_kartlari = []
+
 
         def ozel_mouse_drag_event(ev, axis=None):
             if ev.isStart():
@@ -1466,7 +1547,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             for eski_cizgi in self.limit_cizgileri:
                 self.hata_grafik.removeItem(eski_cizgi)
         self.limit_cizgileri = []
-
+        self.secili_limit_sensorleri = secilen_sensorler
+        limitler = getattr(self, 'LIMITLER', {})
         for sensor in secilen_sensorler:
             if sensor in self.LIMITLER:
                 min_sinir, max_sinir = self.LIMITLER[sensor]
@@ -1480,6 +1562,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 cizgi_max.setValue(max_sinir)
                 self.hata_grafik.addItem(cizgi_max)
                 self.limit_cizgileri.append(cizgi_max)
+
+
+
+
+
+
 
     def minmaxPenceresiniAc(self):
         """
@@ -1704,7 +1792,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         except Exception:
             self.hata_grafik.enableAutoRange(axis=pg.ViewBox.YAxis)
 
-        self.HataGrafikMinMaxCiz(self.secili_sensorler)
 
     def radar_goster(self):
         """
@@ -1776,6 +1863,17 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             return
 
         exporter = ImageExporter(self.analiz_grafigi.plotItem)
+        exporter.export(dosya)
+
+    def genel_grafigi_kaydet(self):
+        """
+        @brief Genel Hata Analizi grafiğini yüksek çözünürlüklü PNG formatında dışa aktarır.
+        """
+        dosya, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Genel Hata Grafiğini Kaydet", "genel_hata_grafigi.png", "PNG Dosyası (*.png)")
+        if not dosya:
+            return
+
+        exporter = ImageExporter(self.GenelHataBloklari.plotItem)
         exporter.export(dosya)
 
     def mouseHareketEtti(self, kordinat):
@@ -1854,15 +1952,19 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     renk_kodu = cizgi_nesnesi.opts['pen'].color().name()
 
                     ek_metin = ""
-                    # JSON'da bu sensör için limit tanımlıysa aşım kontrolü yap:
-                    if hasattr(self, 'LIMITLER') and kolonadi in self.LIMITLER:
-                        alt_lim, ust_lim = self.LIMITLER[kolonadi]
+                    # Sadece Limit Ayarlarından aktif edilmiş sensörler için aşım uyarısı göster:
+                    aktif_limitler = getattr(self, 'secili_limit_sensorleri', [])
+                    limit_sozlugu = getattr(self, 'LIMITLER', {})
+
+                    if kolonadi in aktif_limitler and kolonadi in limit_sozlugu:
+                        alt_lim, ust_lim = limit_sozlugu[kolonadi]
                         if deger > ust_lim:
                             sapma = deger - ust_lim
                             ek_metin = f" <b style='color: #FF4500;'>(Aşım: +{sapma:.2f})</b>"
                         elif deger < alt_lim:
                             sapma = alt_lim - deger
                             ek_metin = f" <b style='color: #FF4500;'>(Aşım: -{sapma:.2f})</b>"
+
 
                     gosterilecek_metin += f"<span style='color: {renk_kodu};'>{kolonadi} : {deger:.2f}{ek_metin}</span><br>"
 
@@ -2520,6 +2622,169 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         f"C++ / Klasör üzerinden {len(self.tanimli_sensorler)} adet sensör ve limit başarıyla yüklendi: {json_yolu}")
             except Exception as e:
                 print(f"JSON okuma hatası: {e}")
+
+
+    # ==========================================================================
+    # 🌟 SERBEST ÇALIŞMA ALANI (DASHBOARD) YÖNETİCİSİ
+    # ==========================================================================
+
+    def dashboard_grafik_ekle_dialog(self):
+        """
+        @brief Kullanıcıya sensör seçtiren ve ızgaraya yeni bir SensorGrafikKarti ekleyen metot.
+        """
+        if self.df is None or self.df.empty:
+            QtWidgets.QMessageBox.warning(self, "Veri Yüklü Değil", "Lütfen önce 1. Sekmeden bir test oturumu veya CSV dosyası yükleyiniz.")
+            return
+
+        # Kullanılabilir sensör listesini hazırla
+        haric = ["Motor_No", "Zaman_Gorsel", "Zaman_Index"]
+        if hasattr(self, 'hata_kategorileri'):
+            haric.extend(self.hata_kategorileri)
+
+        tanimli = getattr(self, 'tanimli_sensorler', None)
+        if tanimli:
+            sensor_listesi = [s for s in tanimli if s in self.df.columns]
+        else:
+            sensor_listesi = [col for col in self.df.columns if col not in haric]
+
+        if not sensor_listesi:
+            QtWidgets.QMessageBox.information(self, "Sensör Bulunamadı", "Görüntülenebilecek uygun bir sensör kolonu bulunamadı.")
+            return
+
+        # Sensör Seçim Açılır Kutusu (QInputDialog)
+        secilen_sensor, ok = QtWidgets.QInputDialog.getItem(
+            self, "Grafik Ekle", "Görüntülemek istediğiniz sensörü seçiniz:", sensor_listesi, 0, False
+        )
+        if not ok or not secilen_sensor:
+            return
+
+        # Limitleri ve rengi belirle
+        limit_sozlugu = getattr(self, 'LIMITLER', {})
+        limitler = limit_sozlugu.get(secilen_sensor, None)
+        renk = self.sensor_rengi_getir(secilen_sensor)
+
+        # Yeni Grafik Kartını Üret (C#'taki: new SensorGrafikKarti)
+        kart = SensorGrafikKarti(
+            sensor_adi=secilen_sensor,
+            df=self.df,
+            parent=self,
+            limitler=limitler,
+            cizgi_rengi=renk
+        )
+
+        # QMdiArea İçine Manyetik Izgaralı (Snap-to-Grid) Serbest Pencere Olarak Ekle
+        if hasattr(self, 'mdi_area_dashboard'):
+            sub = GridMdiSubWindow()
+            sub.setWidget(kart)
+            sub.setWindowTitle(f"{secilen_sensor}")
+            self.mdi_area_dashboard.addSubWindow(sub)
+            sub.resize(550, 350)
+            sub.show()
+            if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
+                self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+
+    def dashboard_tumunu_temizle(self):
+        """
+        @brief Serbest Çalışma Alanındaki tüm pencereleri kapatır.
+        """
+        if hasattr(self, 'mdi_area_dashboard'):
+            self.mdi_area_dashboard.closeAllSubWindows()
+            if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
+                self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+
+    def dashboard_yan_yana_diz(self):
+        """
+        @brief Ekranda görünen piksel sınırlarını baz alarak pencereleri pürüzsüz ve çökmesiz ızgara düzenine sokar.
+        """
+        if not hasattr(self, 'mdi_area_dashboard'):
+            return
+
+        self.mdi_area_dashboard.verticalScrollBar().setValue(0)
+        self.mdi_area_dashboard.horizontalScrollBar().setValue(0)
+
+        pencereler = [s for s in self.mdi_area_dashboard.subWindowList() if s.isVisible() and not s.isMinimized()]
+        N = len(pencereler)
+        if N == 0:
+            return
+
+        vp_w = max(self.mdi_area_dashboard.viewport().width(), 500)
+        vp_h = max(self.mdi_area_dashboard.viewport().height(), 400)
+
+        # Sütun ve satır sayısını dinamik belirle
+        if N == 1:
+            cols, rows = 1, 1
+        elif N == 2:
+            cols, rows = 2, 1
+        elif N <= 4:
+            cols, rows = 2, 2
+        elif N <= 6:
+            cols, rows = 3, 2
+        else:
+            cols = 2
+            rows = int(np.ceil(N / 2))
+
+        w = int(vp_w / cols)
+        h = int(vp_h / rows) if rows <= 2 else 350
+
+        # Pencereleri otomatik yerleştir
+        for idx, s in enumerate(pencereler):
+            s._otomatik_diziliyor = True
+            c = idx % cols
+            r = idx // cols
+            s.setGeometry(c * w, r * h, w, h)
+            s._otomatik_diziliyor = False
+
+        if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
+            self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+
+    def dashboard_basamakla(self):
+        """
+        @brief Pencereleri görünür ekran alanı içinde şık bir sırayla basamaklar (Cascade).
+        """
+        if not hasattr(self, 'mdi_area_dashboard'):
+            return
+
+        self.mdi_area_dashboard.verticalScrollBar().setValue(0)
+        self.mdi_area_dashboard.horizontalScrollBar().setValue(0)
+
+        pencereler = [s for s in self.mdi_area_dashboard.subWindowList() if s.isVisible() and not s.isMinimized()]
+        if not pencereler:
+            return
+
+        vp_w = max(self.mdi_area_dashboard.viewport().width(), 500)
+        vp_h = max(self.mdi_area_dashboard.viewport().height(), 400)
+
+        w = min(600, int(vp_w * 0.7))
+        h = min(400, int(vp_h * 0.7))
+        offset = 30
+
+        for idx, s in enumerate(pencereler):
+            s._otomatik_diziliyor = True
+            x = (idx * offset) % max(1, vp_w - w)
+            y = (idx * offset) % max(1, vp_h - h)
+            s.setGeometry(x, y, w, h)
+            s._otomatik_diziliyor = False
+
+        if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
+            self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ==============================================================================
