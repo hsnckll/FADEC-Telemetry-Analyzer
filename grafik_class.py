@@ -5,6 +5,7 @@
 """
 
 import os
+import time
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
@@ -14,6 +15,7 @@ from PyQt5.QtCore import Qt
 from matplotlib import animation
 from numba import njit
 import datetime
+pg.setConfigOptions(useOpenGL=True)
 
 @njit
 def lttb_downsample(x, y, threshold=1500):
@@ -63,9 +65,9 @@ def lttb_downsample(x, y, threshold=1500):
     return out_x, out_y
 
 
-def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#0e0e10", line_color="#202026"):
+def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#000000", line_color="#1a1a1a"):
     """
-    @brief QMdiArea için koyu renkli, şık mühendislik kareli ızgara deseni üretir.
+    @brief Koyu renkli, şık mühendislik kareli ızgara deseni üretir.
     """
     pix = QtGui.QPixmap(grid_size, grid_size)
     pix.fill(QtGui.QColor(bg_color))
@@ -78,53 +80,18 @@ def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#0e0e10", line_color="#
     return QtGui.QBrush(pix)
 
 
-class GridMdiSubWindow(QtWidgets.QMdiSubWindow):
-    """
-    @brief Hareket ettirildiğinde veya boyutlandırıldığında 25px kareli ızgaraya manyetik olarak yapışan (Snap-to-Grid) MDI penceresi.
-    """
-    GRID_SIZE = 25
 
+class DashboardTuval(QtWidgets.QWidget):
+    """
+    @brief 25px kareli mühendislik ızgara desenine sahip koyu temalı serbest tuval.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._snapping = False
-        self._otomatik_diziliyor = False
-        # Çerçevesiz, temiz görünüm için OS frame'ini kaldır
-        self.setWindowFlags(QtCore.Qt.SubWindow | QtCore.Qt.FramelessWindowHint)
-        self.setStyleSheet("background-color: transparent;")
+        self.izgara_brush = kareli_izgara_deseni_olustur(25)
 
-    def moveEvent(self, ev):
-        super().moveEvent(ev)
-        if not self._snapping and not getattr(self, '_otomatik_diziliyor', False):
-            self._snapping = True
-            p = self.pos()
-            sx = round(p.x() / self.GRID_SIZE) * self.GRID_SIZE
-            sy = round(p.y() / self.GRID_SIZE) * self.GRID_SIZE
-            if (p.x(), p.y()) != (sx, sy):
-                super().move(int(sx), int(sy))
-            self._snapping = False
-
-        # MDI Scrollbar Alanını Otomatik Genişlet
-        if not getattr(self, '_otomatik_diziliyor', False):
-            mdi = self.mdiArea()
-            if mdi and hasattr(mdi, 'guncelle_kaydirma_araligi'):
-                mdi.guncelle_kaydirma_araligi()
-
-    def resizeEvent(self, ev):
-        super().resizeEvent(ev)
-        if not self._snapping and not getattr(self, '_otomatik_diziliyor', False):
-            self._snapping = True
-            sz = self.size()
-            sw = max(self.minimumWidth(), round(sz.width() / self.GRID_SIZE) * self.GRID_SIZE)
-            sh = max(self.minimumHeight(), round(sz.height() / self.GRID_SIZE) * self.GRID_SIZE)
-            if (sz.width(), sz.height()) != (sw, sh):
-                super().resize(int(sw), int(sh))
-            self._snapping = False
-
-        # MDI Scrollbar Alanını Otomatik Genişlet
-        if not getattr(self, '_otomatik_diziliyor', False):
-            mdi = self.mdiArea()
-            if mdi and hasattr(mdi, 'guncelle_kaydirma_araligi'):
-                mdi.guncelle_kaydirma_araligi()
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(event.rect(), self.izgara_brush)
 
 
 class SensorGrafikViewBox(pg.ViewBox):
@@ -149,6 +116,7 @@ class ZamanEkseniItem(pg.AxisItem):
         self.dt_saniye = 0.1  # Varsayılan 100ms
 
     def tickStrings(self, values, scale, spacing):
+        return [str(int(v)) for v in values]
         if self.baslangic_zamani is None:
             return super().tickStrings(values, scale, spacing)
 
@@ -215,6 +183,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         """
         @brief Kartın görsel arayüzünü (Başlık çubuğu + Grafik alanı) inşa eder.
         """
+
         self.setMinimumSize(QtCore.QSize(300, 200))
         self.setStyleSheet("""
             SensorGrafikKarti {
@@ -286,7 +255,6 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         layout_icerik.addLayout(layout_ust)
 
         # 3. PyQtGraph Çizim Alanı (Özel ViewBox ile)
-        pg.setConfigOption('antialias', False)  # Performans (Droplanma) sorunu için Anti-Aliasing kapatıldı
         vb = SensorGrafikViewBox(kart=self)
         self.zaman_ekseni = ZamanEkseniItem(orientation='bottom')
         self.plot_widget = pg.PlotWidget(viewBox=vb, axisItems={'bottom': self.zaman_ekseni})
@@ -311,7 +279,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         axis_left.setTextPen(pg.mkPen(color='#777777'))
         axis_left.setTickFont(axis_font)
 
-        self.plot_widget.plotItem.vb.sigXRangeChanged.connect(lambda: self.zoom_timer.start(600))
+        self.plot_widget.plotItem.vb.sigXRangeChanged.connect(lambda: self.zoom_timer.start(1000))
 
         # Daha belirgin Crosshair
         self.vLine = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('#888888', width=1, style=Qt.DashLine))
@@ -348,35 +316,72 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         layout_ana.addWidget(icerik_frame)
 
+        # Başlık sürükleme olayları (Pencereyi taşımak için)
+        self.header_frame.mousePressEvent = self.baslik_basildi
+        self.header_frame.mouseMoveEvent = self.baslik_suruklendi
+        self.header_frame.mouseReleaseEvent = self.baslik_birakildi  # <--- BU YENİ
+
+        # ... biraz aşağıda boyutlandırma olayları var:
+        self.resize_handle.mousePressEvent = self.resize_basildi
+        self.resize_handle.mouseMoveEvent = self.resize_suruklendi
+        self.resize_handle.mouseReleaseEvent = self.resize_birakildi  # <--- BU YENİ
+
+    def mousePressEvent(self, event):
+        """ Karta tıklandığı an onu en üst katmana (öne) getirir. """
+        self.raise_()
+        super().mousePressEvent(event)
+
     def baslik_basildi(self, event):
+        """ Başlığa tıklandığında sürükleme başlangıç koordinatlarını kaydeder. """
         if event.button() == QtCore.Qt.LeftButton:
+            self.raise_()
             self.drag_start_pos = event.globalPos()
-            self.mdi_parent = self.parentWidget()
-            while self.mdi_parent is not None and not isinstance(self.mdi_parent, QtWidgets.QMdiSubWindow):
-                self.mdi_parent = self.mdi_parent.parentWidget()
-            if self.mdi_parent is not None:
-                self.window_start_pos = self.mdi_parent.pos()
+            self.window_start_pos = self.pos()
 
     def baslik_suruklendi(self, event):
-        if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'drag_start_pos') and hasattr(self, 'mdi_parent') and self.mdi_parent is not None:
+        """ Başlık sürüklendikçe kartı 25px kareli ızgaraya manyetik olarak yapıştırarak taşır. """
+        if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'drag_start_pos'):
             delta = event.globalPos() - self.drag_start_pos
-            self.mdi_parent.move(self.window_start_pos + delta)
+            ham_x = self.window_start_pos.x() + delta.x()
+            ham_y = self.window_start_pos.y() + delta.y()
+
+            # 🔥 25px Manyetik Izgara Hizalaması
+            snap_x = max(0, round(ham_x / 25) * 25)
+            snap_y = max(0, round(ham_y / 25) * 25)
+
+            self.move(int(snap_x), int(snap_y))
+            self.tuvali_guncelle(sadece_buyut=True)
 
     def resize_basildi(self, event):
+        """ Boyutlandırma tutamacına basıldığında başlangıç boyutunu kaydeder. """
         if event.button() == QtCore.Qt.LeftButton:
+            self.raise_()
             self.resize_drag_start_pos = event.globalPos()
-            self.mdi_parent = self.parentWidget()
-            while self.mdi_parent is not None and not isinstance(self.mdi_parent, QtWidgets.QMdiSubWindow):
-                self.mdi_parent = self.mdi_parent.parentWidget()
-            if self.mdi_parent is not None:
-                self.window_start_size = self.mdi_parent.size()
+            self.window_start_size = self.size()
 
     def resize_suruklendi(self, event):
-        if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'resize_drag_start_pos') and hasattr(self, 'mdi_parent') and self.mdi_parent is not None:
+        """ Tutamaç sürüklendikçe kartı 25px ızgara adımlarıyla büyütüp küçültür. """
+        if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'resize_drag_start_pos'):
             delta = event.globalPos() - self.resize_drag_start_pos
-            yeni_genislik = max(self.mdi_parent.minimumWidth(), self.window_start_size.width() + delta.x())
-            yeni_yukseklik = max(self.mdi_parent.minimumHeight(), self.window_start_size.height() + delta.y())
-            self.mdi_parent.resize(yeni_genislik, yeni_yukseklik)
+            ham_w = self.window_start_size.width() + delta.x()
+            ham_h = self.window_start_size.height() + delta.y()
+
+            # 🔥 25px Boyutlandırma Hizalaması
+            snap_w = max(self.minimumWidth(), round(ham_w / 25) * 25)
+            snap_h = max(self.minimumHeight(), round(ham_h / 25) * 25)
+
+            self.resize(int(snap_w), int(snap_h))
+            self.tuvali_guncelle(sadece_buyut=True)
+
+
+    def baslik_birakildi(self, event):
+        """ Başlık sürüklemesi bittiğinde tuvalin fazlalıklarını kırpar. """
+        self.tuvali_guncelle(sadece_buyut=False)
+
+    def resize_birakildi(self, event):
+        """ Boyutlandırma bittiğinde tuvalin fazlalıklarını kırpar. """
+        self.tuvali_guncelle(sadece_buyut=False)
+
 
     def ciz(self):
         """
@@ -384,6 +389,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         """
         if self.df is None or self.sensor_adi not in self.df.columns:
             return
+        t_basla = time.perf_counter()
 
         x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False) if "Zaman_Index" in self.df.columns else np.arange(len(self.df), dtype=np.float64)
         y_raw = self.df[self.sensor_adi].to_numpy(dtype=np.float64, copy=False)
@@ -416,11 +422,12 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             pass
 
         # LTTB ile çiz
+        t_lttb_basla = time.perf_counter()
         if len(x_raw) > 1500:
             x_down, y_down = lttb_downsample(x_raw, y_raw, threshold=1500)
         else:
             x_down, y_down = x_raw, y_raw
-
+        t_lttb_bitis = time.perf_counter()
         self.cizgi = self.plot_widget.plot(
             x=x_down, y=y_down,
             pen=pg.mkPen(color=self.cizgi_rengi, width=1.5),  # Daha kalın ve belirgin çizgi
@@ -430,9 +437,14 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.cizgi.setDownsampling(ds=False, auto=False)
         self.cizgi.setClipToView(False)
 
+        t_bitis = time.perf_counter()
+
         # Otomatik limit çizgisi varsa çiz
         if self.limitler and len(self.limitler) >= 2:
             self.limit_cizgilerini_guncelle(self.limitler[0], self.limitler[1])
+
+        lttb_ms = (t_lttb_bitis - t_lttb_basla) * 1000
+        toplam_ms = (t_bitis - t_basla) * 1000
 
     def grafik_lod_guncelle(self):
         """
@@ -465,14 +477,18 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
     def fare_hareket_etti(self, evt):
         """
-        @brief Ana grafikteki gibi hızlı ve pürüzsüz fare takip imleci.
+        @brief Yüksek performanslı, saf NumPy tabanlı akıllı fare takip imleci.
         """
+        # Sol/Sağ tık basılıyken (sürükleme/kaydırma anında) imleç hesaplamasını durdur (FPS Koruması)
         if QtWidgets.QApplication.mouseButtons() != QtCore.Qt.NoButton:
             return
-        if self.df is None or len(self.df) == 0:
+
+        # Eğer henüz veri çizilmediyse veya boşsa işlem yapma
+        if self.ham_y is None or len(self.ham_y) == 0:
             return
 
         pos = evt[0]
+        # Fare bu grafiğin sınırları İÇİNDE mi?
         if self.plot_widget.sceneBoundingRect().contains(pos):
             mouse_noktasi = self.plot_widget.plotItem.vb.mapSceneToView(pos)
             try:
@@ -481,13 +497,26 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 return
 
             satir_idx = gercekZaman - 1
-            if satir_idx < 0 or satir_idx >= len(self.df):
+            if satir_idx < 0 or satir_idx >= len(self.ham_y):
                 return
 
+            # İmleci ve yazıyı görünür yap
+            if not self.vLine.isVisible():
+                self.vLine.show()
+                self.crosshair_yazi.show()
+
             self.vLine.setPos(gercekZaman)
-            deger = self.df.iat[satir_idx, self.df.columns.get_loc(self.sensor_adi)]
+
+            # 🔥 EN KRİTİK OPTİMİZASYON: Pandas yerine doğrudan NumPy dizisinden O(1) hızında okuma
+            deger = self.ham_y[satir_idx]
+
             self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : {deger:.2f}")
             self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
+        else:
+            # Fare bu grafikten çıktıysa imleci gizle (Diğer pencereleri rahatlatır)
+            if self.vLine.isVisible():
+                self.vLine.hide()
+                self.crosshair_yazi.hide()
 
     # ==========================================================================
     # 🖱️ AKILLI SAĞ TIK MENÜSÜ (Sürükleme anında açılmaz, tek tıkta açılır)
@@ -539,7 +568,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         elif secilen == act_png:
             self.png_kaydet()
         elif secilen == act_reset:
-            self.plot_widget.plotItem.vb.autoRange(padding=0.02, animate=False)
+            self.plot_widget.plotItem.vb.autoRange(padding=0.02)
         elif secilen == act_kapat:
             self.kapat()
 
@@ -601,8 +630,12 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         @brief Kendini ve varsa MDI penceresini kapatır.
         """
         self.kapandi_signal.emit(self)
-        parent_widget = self.parentWidget()
-        if parent_widget and hasattr(parent_widget, 'close'):
-            parent_widget.close()
-        else:
-            self.deleteLater()
+        self.setParent(None)
+        self.deleteLater()
+
+        self.tuvali_guncelle()
+
+    def tuvali_guncelle(self, sadece_buyut=False):
+        ana_pencere = self.window()
+        if hasattr(ana_pencere, 'guncelle_tuval_boyutu'):
+            ana_pencere.guncelle_tuval_boyutu(sadece_buyut=sadece_buyut)

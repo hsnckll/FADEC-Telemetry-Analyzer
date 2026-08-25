@@ -35,11 +35,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pyqtgraph as pg
 from pyqtgraph import mkPen
-from grafik_class import SensorGrafikKarti, GridMdiSubWindow, kareli_izgara_deseni_olustur
+from grafik_class import SensorGrafikKarti,  kareli_izgara_deseni_olustur, DashboardTuval
 
-# PyQtGraph Yüksek Performanslı Çizim Ayarları (LTTB + QPainter)
-pg.setConfigOptions(useOpenGL=False, enableExperimental=False, antialias=True)
-
+pg.setConfigOptions(useOpenGL=True, enableExperimental=False, antialias=False)
 # ==============================================================================
 # 3. PYQT5 ARAYÜZ BİLEŞENLERİ
 # ==============================================================================
@@ -151,12 +149,28 @@ QComboBox {
     min-height: 28px;
 }
 QComboBox:hover { border: 1px solid #00ffcc; background-color: #333333; }
+
+
+
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 25px;
+    width: 28px;
     border-left: 1px solid #444444;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    background-color: #242424;
 }
+QComboBox::drop-down:hover {
+    background-color: #333333;
+}
+QComboBox::down-arrow {
+    image: url(asagi_ok.png);
+    width: 12px;
+    height: 12px;
+}
+
+
 QComboBox QAbstractItemView {
     background-color: #1e1e1e;
     color: #ffffff;
@@ -240,7 +254,7 @@ QScrollBar::handle:horizontal, QScrollBar::handle:vertical {
 QScrollBar::handle:hover { background-color: #777777; }
 
 QMdiArea, #tab_4 {
-    background-color: #0e0e10;
+    background-color: #181818;
     border: none;
 }
 QMdiSubWindow {
@@ -1162,13 +1176,15 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.tabWidget.tabBar().setElideMode(QtCore.Qt.ElideNone)
         self.tabWidget.setCurrentIndex(0)
 
+
+
         # Tablo ve Grafik Görünüm Ayarları
         if hasattr(self, 'tbl_log_oturumlar'):
             self.tbl_log_oturumlar.verticalHeader().setVisible(False)
             self.tbl_log_oturumlar.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
             self.tbl_log_oturumlar.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-            self.tbl_log_oturumlar.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-            self.tbl_log_oturumlar.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            self.tbl_log_oturumlar.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
+            self.tbl_log_oturumlar.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
 
             self.oturum_dosyalari = []
             if hasattr(self, 'tbl_log_oturumlar'):
@@ -1183,6 +1199,36 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.tbl_istatistik.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         self.tbl_istatistik.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.hata_grafik.showGrid(x=True, y=True, alpha=0.3)
+
+
+        # Hata Tablosunun Üstüne Şık Bilgi Başlığı (Banner) Ekleyelim
+        if hasattr(self, 'hata_Tablo') and hasattr(self, 'splitter'):
+            self.tablo_kapsayici = QtWidgets.QWidget()
+            layout_kapsayici = QtWidgets.QVBoxLayout(self.tablo_kapsayici)
+            layout_kapsayici.setContentsMargins(0, 0, 0, 0)
+            layout_kapsayici.setSpacing(0)
+
+            self.lbl_hata_tablo_baslik = QtWidgets.QLabel("📌 Hata Bloğu Seçilmedi (Soldaki listeden bir blok seçiniz)")
+            self.lbl_hata_tablo_baslik.setStyleSheet("""
+                QLabel {
+                    background-color: #232328;
+                    color: #00ffcc;
+                    font-weight: bold;
+                    font-size: 10pt;
+                    padding: 6px 12px;
+                    border: 1px solid #383842;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                }
+            """)
+            layout_kapsayici.addWidget(self.lbl_hata_tablo_baslik)
+            layout_kapsayici.addWidget(self.hata_Tablo)
+            self.splitter.insertWidget(0, self.tablo_kapsayici)
+
+
+
+
 
         self.GenelHataBloklari.setBackground('#000000')
         self.GenelHataBloklari.showGrid(x=True, y=True, alpha=0.3)
@@ -1205,57 +1251,39 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.HataBlok_List.itemClicked.connect(self.hataBlokunaBasildi)
         self.btn_hata_silme.clicked.connect(self.hata_grafik_temizle)
 
-        # Serbest Çalışma Alanı (QMdiArea Dashboard) Bağlantıları
+        # Serbest Tuval Alanı (Free Canvas ScrollArea) Kurulumu
         if hasattr(self, 'mdi_area_dashboard'):
-            self.mdi_area_dashboard.setBackground(kareli_izgara_deseni_olustur(25))
-            self.mdi_area_dashboard.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-            self.mdi_area_dashboard.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+            parent_layout = self.mdi_area_dashboard.parentWidget().layout()
+            self.mdi_area_dashboard.hide()
+            self.mdi_area_dashboard.deleteLater()
 
-            def mdi_kaydirma_guncelle():
-                if not hasattr(self, 'mdi_area_dashboard'):
-                    return
-                
-                cur_h = self.mdi_area_dashboard.horizontalScrollBar().value()
-                cur_v = self.mdi_area_dashboard.verticalScrollBar().value()
+            self.dashboard_scroll = QtWidgets.QScrollArea()
+            self.dashboard_scroll.setWidgetResizable(False)
+            self.dashboard_scroll.setStyleSheet("background-color: #0e0e10; border: none;")
+            self.dashboard_scroll.viewport().setStyleSheet("background-color: #0e0e10;")
 
-                vp_w = max(10, self.mdi_area_dashboard.viewport().width())
-                vp_h = max(10, self.mdi_area_dashboard.viewport().height())
+            # Özel Kareli Tuvalimizi Yerleştiriyoruz
+            self.dashboard_container = DashboardTuval()
+            self.dashboard_container.setMinimumSize(100, 100)
+            self.dashboard_scroll.resizeEvent = lambda e: self.guncelle_tuval_boyutu()
 
-                max_world_x = vp_w
-                max_world_y = vp_h
-
-                for sub in self.mdi_area_dashboard.subWindowList():
-                    if sub.isVisible() and not sub.isMinimized():
-                        world_x = sub.x() + cur_h
-                        world_y = sub.y() + cur_v
-                        max_world_x = max(max_world_x, world_x + sub.width() + 25)
-                        max_world_y = max(max_world_y, world_y + sub.height() + 25)
-
-                h_max = max(0, max_world_x - vp_w)
-                v_max = max(0, max_world_y - vp_h)
-
-                self.mdi_area_dashboard.horizontalScrollBar().setRange(0, h_max)
-                self.mdi_area_dashboard.verticalScrollBar().setRange(0, v_max)
-                self.mdi_area_dashboard.horizontalScrollBar().setPageStep(vp_w)
-                self.mdi_area_dashboard.verticalScrollBar().setPageStep(vp_h)
-                self.mdi_area_dashboard.horizontalScrollBar().setSingleStep(25)
-                self.mdi_area_dashboard.verticalScrollBar().setSingleStep(25)
-
-            self.mdi_area_dashboard.guncelle_kaydirma_araligi = mdi_kaydirma_guncelle
-
-            eski_mdi_resize = self.mdi_area_dashboard.resizeEvent
-            def ozel_mdi_resize(ev):
-                eski_mdi_resize(ev)
-                mdi_kaydirma_guncelle()
-            self.mdi_area_dashboard.resizeEvent = ozel_mdi_resize
+            self.dashboard_scroll.setWidget(self.dashboard_container)
+            parent_layout.addWidget(self.dashboard_scroll)
 
         if hasattr(self, 'btn_dashboard_grafik_ekle'):
+            self.btn_dashboard_grafik_ekle.setText("Grafik Ekle")
             self.btn_dashboard_grafik_ekle.clicked.connect(self.dashboard_grafik_ekle_dialog)
+
         if hasattr(self, 'btn_dashboard_diz_karo'):
+            self.btn_dashboard_diz_karo.setText("Yan Yana Diz")
             self.btn_dashboard_diz_karo.clicked.connect(self.dashboard_yan_yana_diz)
+
         if hasattr(self, 'btn_dashboard_diz_basamak'):
+            self.btn_dashboard_diz_basamak.setText("Basamakla")
             self.btn_dashboard_diz_basamak.clicked.connect(self.dashboard_basamakla)
+
         if hasattr(self, 'btn_dashboard_temizle'):
+            self.btn_dashboard_temizle.setText("Tümünü Kapat")
             self.btn_dashboard_temizle.clicked.connect(self.dashboard_tumunu_temizle)
 
         self.secimBolgesi = None
@@ -1290,6 +1318,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.hata_grafik.addItem(self.hLine_hata, ignoreBounds=True)
         self.crosshair_yazi_hata = pg.TextItem(anchor=(0, 1))
         self.hata_grafik.addItem(self.crosshair_yazi_hata, ignoreBounds=True)
+        # Başlangıçta imleçleri gizle
+        self.vLine_hata.hide()
+        self.hLine_hata.hide()
+        self.crosshair_yazi_hata.hide()
         self.proxy_hata = pg.SignalProxy(self.hata_grafik.scene().sigMouseMoved, rateLimit=60, slot=self.mouseHareketEtti_Hata)
 
         # LOD Zamanlayıcıları (Tab 1 & Tab 2)
@@ -1390,6 +1422,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             plot_item.legend.scene().removeItem(plot_item.legend)
             plot_item.legend = None
         self.hata_grafik.addLegend(offset=(10, 10))
+
 
     def grafik_lod_guncelle_genel(self):
         """
@@ -1531,12 +1564,25 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if secili == -1:
             return
 
+        secili_item = self.HataBlok_List.currentItem()
+        blok_metni = secili_item.text() if secili_item else f"Blok {secili + 1}"
+
+        # 🎯 ComboBox'tan seçili olan Hata Türünü al (Örn: Hata_Durumu3)
+        secili_kategori = self.cmb_hataBloklari.currentText() if hasattr(self,
+                                                                         'cmb_hataBloklari') and self.cmb_hataBloklari.currentText() else "Genel Hata"
+
         bas, bit = self.hataBloklarıİndeksleri[secili]
         blok_verisi = self.df.iloc[bas:bit]
+
+        # 🔥 Tablo üstündeki başlık rozetini dinamik olarak güncelle
+        if hasattr(self, 'lbl_hata_tablo_baslik'):
+            toplam_satir = len(blok_verisi)
+            self.lbl_hata_tablo_baslik.setText(f" Hata Türü: {secili_kategori}   |   {blok_metni}   |    Satır Aralığı: [{bas:,} - {bit:,}] ({toplam_satir:,} Satır)")
 
         hata_kats = getattr(self, 'hata_kategorileri', [])
         model = PandasModel(blok_verisi, hata_kategorileri=hata_kats)
         self.hata_Tablo.setModel(model)
+
 
     def HataGrafikMinMaxCiz(self, secilen_sensorler):
         """
@@ -1712,6 +1758,9 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.hataBloklarıİndeksleri = []
 
         secili_kategori = self.cmb_hataBloklari.currentText()
+        # ComboBox değiştiğinde başlığı yeni kategoriyle hazırla
+        if hasattr(self, 'lbl_hata_tablo_baslik'):
+            self.lbl_hata_tablo_baslik.setText(f" Hata Türü: {secili_kategori}   |    Tabloyu doldurmak için soldaki listeden bir blok seçiniz")
         if not secili_kategori or secili_kategori not in self.tum_hata_bloklari:
             return
 
@@ -2548,29 +2597,40 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         """
         @brief Sol tablodan seçili satırdaki data ve event dosyalarını otomatik birleştirip yükler.
         """
-        secili_satir = self.tbl_log_oturumlar.currentRow()
+        secili_itemler = self.tbl_log_oturumlar.selectedItems()
 
-        # Eğer kullanıcı hiçbir satır seçmeden butona bastıysa uyar:
-        if secili_satir == -1:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Seçim Yapılmadı",
-                "Lütfen önce sol tablodan yüklemek istediğiniz bir test oturumunu (satırı) seçiniz."
-            )
+        # Eğer hiçbir hücre seçilmediyse
+        if len(secili_itemler) == 0:
+            QtWidgets.QMessageBox.warning(self, "Seçim Yapılmadı", "Lütfen tablodan yüklemek istediğiniz Data ve/veya Event dosyasını seçiniz.")
             return
 
-        if secili_satir >= len(self.oturum_dosyalari):
-            return
+        """if secili_itemler >= len(self.oturum_dosyalari):
+            return"""
 
-        secili_oturum = self.oturum_dosyalari[secili_satir]
-        data_yolu = secili_oturum["data_yolu"]
-        event_yolu = secili_oturum["event_yolu"]
+
+
+        data_yolu = None
+        event_yolu = None
+
+        for item in secili_itemler:
+            satir=item.row()
+            sutun=item.column()
+
+            if(sutun==0): # Eğer sıfırıncı sutun seçildiyse yani data log sutunu seçildiyse
+                data_yolu=self.oturum_dosyalari[satir]["data_yolu"]
+
+            elif(sutun==1): # Eğer birinci sutun seçildiyse yani event log sutunu seçildiyse
+                event_yolu= self.oturum_dosyalari[satir]["event_yolu"]
+
+
+
+
 
         if not data_yolu or not os.path.exists(data_yolu):
             QtWidgets.QMessageBox.warning(
                 self,
                 "Dosya Bulunamadı",
-                f"Data log dosyası bulunamadı:\n{secili_oturum['data_adi']}"
+                f"Data log dosyası bulunamadı:\n{secili_itemler['data_adi']}"
             )
             return
 
@@ -2664,126 +2724,88 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         renk = self.sensor_rengi_getir(secilen_sensor)
 
         # Yeni Grafik Kartını Üret (C#'taki: new SensorGrafikKarti)
+        # Yeni Grafik Kartını doğrudan Tuval'in (dashboard_container) içine üret
         kart = SensorGrafikKarti(
             sensor_adi=secilen_sensor,
             df=self.df,
-            parent=self,
+            parent=self.dashboard_container,
             limitler=limitler,
             cizgi_rengi=renk
         )
 
-        # QMdiArea İçine Manyetik Izgaralı (Snap-to-Grid) Serbest Pencere Olarak Ekle
-        if hasattr(self, 'mdi_area_dashboard'):
-            sub = GridMdiSubWindow()
-            sub.setWidget(kart)
-            sub.setWindowTitle(f"{secilen_sensor}")
-            self.mdi_area_dashboard.addSubWindow(sub)
-            sub.resize(550, 350)
-            sub.show()
-            if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
-                self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+        # Kartı 25px ızgaraya uygun başlangıç koordinatına yerleştir
+        mevcut_kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
+        idx = len(mevcut_kartlar) - 1
+        offset = (idx * 50) % 300
+        kart.setGeometry(50 + offset, 50 + offset, 550, 350)
+        kart.show()
+        kart.raise_()
 
     def dashboard_tumunu_temizle(self):
-        """
-        @brief Serbest Çalışma Alanındaki tüm pencereleri kapatır.
-        """
-        if hasattr(self, 'mdi_area_dashboard'):
-            self.mdi_area_dashboard.closeAllSubWindows()
-            if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
-                self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+        """ Serbest Çalışma Alanındaki tüm grafikleri siler. """
+        if hasattr(self, 'dashboard_container'):
+            for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
+                kart.setParent(None)
+                kart.deleteLater()
 
     def dashboard_yan_yana_diz(self):
-        """
-        @brief Ekranda görünen piksel sınırlarını baz alarak pencereleri pürüzsüz ve çökmesiz ızgara düzenine sokar.
-        """
-        if not hasattr(self, 'mdi_area_dashboard'):
+        """ Kartları tuval üzerinde 2 sütunlu düzenli bir ızgara şeklinde dizer. """
+        if not hasattr(self, 'dashboard_container'):
             return
 
-        self.mdi_area_dashboard.verticalScrollBar().setValue(0)
-        self.mdi_area_dashboard.horizontalScrollBar().setValue(0)
+        kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
+        for i, kart in enumerate(kartlar):
+            satir = i // 2  # Her satırda 2 grafik
+            sutun = i % 2
 
-        pencereler = [s for s in self.mdi_area_dashboard.subWindowList() if s.isVisible() and not s.isMinimized()]
-        N = len(pencereler)
-        if N == 0:
-            return
+            # Her kart 550x350 boyutunda. Aralara 25px boşluk bırakıyoruz
+            x = 25 + (sutun * 575)
+            y = 25 + (satir * 375)
 
-        vp_w = max(self.mdi_area_dashboard.viewport().width(), 500)
-        vp_h = max(self.mdi_area_dashboard.viewport().height(), 400)
-
-        # Sütun ve satır sayısını dinamik belirle
-        if N == 1:
-            cols, rows = 1, 1
-        elif N == 2:
-            cols, rows = 2, 1
-        elif N <= 4:
-            cols, rows = 2, 2
-        elif N <= 6:
-            cols, rows = 3, 2
-        else:
-            cols = 2
-            rows = int(np.ceil(N / 2))
-
-        w = int(vp_w / cols)
-        h = int(vp_h / rows) if rows <= 2 else 350
-
-        # Pencereleri otomatik yerleştir
-        for idx, s in enumerate(pencereler):
-            s._otomatik_diziliyor = True
-            c = idx % cols
-            r = idx // cols
-            s.setGeometry(c * w, r * h, w, h)
-            s._otomatik_diziliyor = False
-
-        if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
-            self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+            kart.setGeometry(x, y, 550, 350)
+            kart.raise_()
+            self.guncelle_tuval_boyutu()
 
     def dashboard_basamakla(self):
-        """
-        @brief Pencereleri görünür ekran alanı içinde şık bir sırayla basamaklar (Cascade).
-        """
-        if not hasattr(self, 'mdi_area_dashboard'):
+        """ Kartları klasik Windows stiliyle çapraz (basamaklı) üst üste dizer. """
+        if not hasattr(self, 'dashboard_container'):
             return
 
-        self.mdi_area_dashboard.verticalScrollBar().setValue(0)
-        self.mdi_area_dashboard.horizontalScrollBar().setValue(0)
+        kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
+        for i, kart in enumerate(kartlar):
+            # Her yeni kartı 50px sağa ve aşağı kaydır
+            x = 25 + (i * 50)
+            y = 25 + (i * 50)
 
-        pencereler = [s for s in self.mdi_area_dashboard.subWindowList() if s.isVisible() and not s.isMinimized()]
-        if not pencereler:
+            kart.setGeometry(x, y, 550, 350)
+            kart.raise_()  # Son ekleneni en üste al
+            self.guncelle_tuval_boyutu()
+
+    def guncelle_tuval_boyutu(self, sadece_buyut=False):
+        """ Kartların konumuna göre tuvali dinamik olarak boyutlandırır. """
+        if not hasattr(self, 'dashboard_container') or not hasattr(self, 'dashboard_scroll'):
             return
 
-        vp_w = max(self.mdi_area_dashboard.viewport().width(), 500)
-        vp_h = max(self.mdi_area_dashboard.viewport().height(), 400)
+        viewport_w = self.dashboard_scroll.viewport().width()
+        viewport_h = self.dashboard_scroll.viewport().height()
 
-        w = min(600, int(vp_w * 0.7))
-        h = min(400, int(vp_h * 0.7))
-        offset = 30
+        max_x = viewport_w
+        max_y = viewport_h
 
-        for idx, s in enumerate(pencereler):
-            s._otomatik_diziliyor = True
-            x = (idx * offset) % max(1, vp_w - w)
-            y = (idx * offset) % max(1, vp_h - h)
-            s.setGeometry(x, y, w, h)
-            s._otomatik_diziliyor = False
+        for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
+            kart_sag = kart.x() + kart.width() + 50
+            kart_alt = kart.y() + kart.height() + 50
+            max_x = max(max_x, kart_sag)
+            max_y = max(max_y, kart_alt)
 
-        if hasattr(self.mdi_area_dashboard, 'guncelle_kaydirma_araligi'):
-            self.mdi_area_dashboard.guncelle_kaydirma_araligi()
+        # Sadece Büyütme Modu Aktifse: Eski boyuttan daha küçüğe inmesine izin verme
+        if sadece_buyut:
+            eski_w = self.dashboard_container.width()
+            eski_h = self.dashboard_container.height()
+            max_x = max(max_x, eski_w)
+            max_y = max(max_y, eski_h)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        self.dashboard_container.setFixedSize(max_x, max_y)
 
 
 
@@ -2798,6 +2820,19 @@ if __name__ == "__main__":
         pass
 
     app = QApplication(sys.argv)
+
+    # ComboBox için Şık Turkuaz Aşağı Ok İkonu Üret
+    if not os.path.exists("asagi_ok.png"):
+        pix = QtGui.QPixmap(16, 16)
+        pix.fill(QtGui.QColor(0, 0, 0, 0))
+        p = QtGui.QPainter(pix)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        pen = QtGui.QPen(QtGui.QColor("#00ffcc"), 2.5, QtCore.Qt.SolidLine)
+        p.setPen(pen)
+        p.drawLine(3, 6, 8, 11)
+        p.drawLine(8, 11, 13, 6)
+        p.end()
+        pix.save("asagi_ok.png")
 
     pencere = AnaPencere()
     pencere.show()
