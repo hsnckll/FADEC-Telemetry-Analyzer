@@ -15,7 +15,9 @@ from PyQt5.QtCore import Qt
 from matplotlib import animation
 from numba import njit
 import datetime
+
 pg.setConfigOptions(useOpenGL=True)
+
 
 @njit
 def lttb_downsample(x, y, threshold=1500):
@@ -80,11 +82,11 @@ def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#000000", line_color="#
     return QtGui.QBrush(pix)
 
 
-
 class DashboardTuval(QtWidgets.QWidget):
     """
     @brief 25px kareli mühendislik ızgara desenine sahip koyu temalı serbest tuval.
     """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.izgara_brush = kareli_izgara_deseni_olustur(25)
@@ -100,6 +102,7 @@ class SensorGrafikViewBox(pg.ViewBox):
     Sağ tıkla keskinleştirme / ölçekleme / sürükleme yapıldığında menü ASLA tetiklenmez.
     Yalnızca grafiğe tek tıklandığında menüyü açar.
     """
+
     def __init__(self, kart=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.kart = kart
@@ -108,6 +111,7 @@ class SensorGrafikViewBox(pg.ViewBox):
         if self.kart is not None and hasattr(self.kart, 'menu_ac'):
             self.kart.menu_ac(QtGui.QCursor.pos())
         ev.accept()
+
 
 class ZamanEkseniItem(pg.AxisItem):
     def __init__(self, *args, **kwargs):
@@ -148,6 +152,7 @@ class ZamanEkseniItem(pg.AxisItem):
                 strings.append("")
 
         return strings
+
 
 class SensorGrafikKarti(QtWidgets.QFrame):
     """
@@ -195,25 +200,26 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         layout_ana = QtWidgets.QVBoxLayout(self)
         layout_ana.setContentsMargins(0, 0, 0, 0)
         layout_ana.setSpacing(0)
-        
+
         # --- Özel, Şık ve Koyu Temalı Başlık Çubuğu ---
         self.header_frame = QtWidgets.QFrame()
         # Kullanıcının istediği turkuaz renkli aksan çizgisi (border-left)
-        self.header_frame.setStyleSheet("background-color: #252526; border-bottom: 1px solid #333333; border-left: 4px solid #00ffcc; border-top: none; border-right: none;")
+        self.header_frame.setStyleSheet(
+            "background-color: #252526; border-bottom: 1px solid #333333; border-left: 4px solid #00ffcc; border-top: none; border-right: none;")
         self.header_frame.setFixedHeight(30)
         layout_header = QtWidgets.QHBoxLayout(self.header_frame)
         layout_header.setContentsMargins(10, 0, 5, 0)
         layout_header.setSpacing(5)
-        
+
         lbl_baslik = QtWidgets.QLabel(f" {self.sensor_adi} ")
         font_baslik = QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold)
         lbl_baslik.setFont(font_baslik)
         # Sensör ismini de temaya uygun turkuaz yapıyoruz
         lbl_baslik.setStyleSheet("color: #00ffcc; background-color: transparent; border: none;")
         layout_header.addWidget(lbl_baslik)
-        
+
         layout_header.addStretch()
-        
+
         btn_kapat = QtWidgets.QPushButton("✕")
         btn_kapat.setFixedSize(24, 24)
         btn_kapat.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
@@ -227,11 +233,11 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         """)
         btn_kapat.clicked.connect(self.kapat)
         layout_header.addWidget(btn_kapat)
-        
+
         # Başlık sürükleme olayları (Pencereyi taşımak için)
         self.header_frame.mousePressEvent = self.baslik_basildi
         self.header_frame.mouseMoveEvent = self.baslik_suruklendi
-        
+
         layout_ana.addWidget(self.header_frame)
 
         # --- İçerik Bölümü ---
@@ -259,20 +265,20 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.zaman_ekseni = ZamanEkseniItem(orientation='bottom')
         self.plot_widget = pg.PlotWidget(viewBox=vb, axisItems={'bottom': self.zaman_ekseni})
         self.plot_widget.setBackground('#121214')  # Daha yumuşak koyu gri arka plan
-        
+
         # Grid ve Eksen Stilleri (Daha zarif)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.4)
         self.plot_widget.setStyleSheet("border: 1px solid #2a2a2d; border-radius: 4px;")
 
         axis_font = QtGui.QFont("Segoe UI", 8)
-        
+
         # X Ekseni
         axis_bottom = self.plot_widget.getAxis('bottom')
         axis_bottom.setLabel("Zaman (İndeks)", color='#888888')
         axis_bottom.setPen(pg.mkPen(color='#333333', width=1))
         axis_bottom.setTextPen(pg.mkPen(color='#777777'))
         axis_bottom.setTickFont(axis_font)
-        
+
         # Y Ekseni
         axis_left = self.plot_widget.getAxis('left')
         axis_left.setPen(pg.mkPen(color='#333333', width=1))
@@ -283,31 +289,32 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         # Daha belirgin Crosshair
         self.vLine = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('#888888', width=1, style=Qt.DashLine))
-        
+
         # Kullanıcının isteği: Arka plan saydam (siyah kutu yok), sadece yazı
         self.crosshair_yazi = pg.TextItem(anchor=(0, 1), color="#ffffff", fill=pg.mkBrush(0, 0, 0, 0))
         self.crosshair_yazi.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
-        
+
         # Z-Index Ayarı: İmlecin ve yazının grafiğin (çizgilerin) altında kalmasını önler
         self.vLine.setZValue(1000)
         self.crosshair_yazi.setZValue(1001)
-        
+
         self.plot_widget.addItem(self.vLine, ignoreBounds=True)
         self.plot_widget.addItem(self.crosshair_yazi, ignoreBounds=True)
-        
+
         # Fare hareketlerini algılayıp crosshair (imleç) değerlerini güncellemek için bağlantı
         self.proxy = pg.SignalProxy(self.plot_widget.scene().sigMouseMoved, rateLimit=60, slot=self.fare_hareket_etti)
 
         layout_icerik.addWidget(self.plot_widget)
-        
+
         # --- Özel Yeniden Boyutlandırma Tutamacı ---
         self.resize_handle = QtWidgets.QLabel("◢")
-        self.resize_handle.setStyleSheet("color: #666666; font-size: 10px; background-color: transparent; border: none;")
+        self.resize_handle.setStyleSheet(
+            "color: #666666; font-size: 10px; background-color: transparent; border: none;")
         self.resize_handle.setCursor(QtGui.QCursor(QtCore.Qt.SizeFDiagCursor))
         self.resize_handle.setAlignment(QtCore.Qt.AlignBottom | QtCore.Qt.AlignRight)
         self.resize_handle.mousePressEvent = self.resize_basildi
         self.resize_handle.mouseMoveEvent = self.resize_suruklendi
-        
+
         layout_alt = QtWidgets.QHBoxLayout()
         layout_alt.setContentsMargins(0, 0, 0, 0)
         layout_alt.addStretch()
@@ -373,7 +380,6 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             self.resize(int(snap_w), int(snap_h))
             self.tuvali_guncelle(sadece_buyut=True)
 
-
     def baslik_birakildi(self, event):
         """ Başlık sürüklemesi bittiğinde tuvalin fazlalıklarını kırpar. """
         self.tuvali_guncelle(sadece_buyut=False)
@@ -381,7 +387,6 @@ class SensorGrafikKarti(QtWidgets.QFrame):
     def resize_birakildi(self, event):
         """ Boyutlandırma bittiğinde tuvalin fazlalıklarını kırpar. """
         self.tuvali_guncelle(sadece_buyut=False)
-
 
     def ciz(self):
         """
@@ -391,7 +396,9 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             return
         t_basla = time.perf_counter()
 
-        x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False) if "Zaman_Index" in self.df.columns else np.arange(len(self.df), dtype=np.float64)
+        x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64,
+                                                copy=False) if "Zaman_Index" in self.df.columns else np.arange(
+            len(self.df), dtype=np.float64)
         y_raw = self.df[self.sensor_adi].to_numpy(dtype=np.float64, copy=False)
 
         if "Zaman_Gorsel" in self.df.columns:
