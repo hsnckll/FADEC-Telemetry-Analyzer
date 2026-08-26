@@ -1419,7 +1419,35 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.tabWidget.tabBar().setElideMode(QtCore.Qt.ElideNone)
         self.tabWidget.setCurrentIndex(0)
 
-        # Sağ Üst Köşe Tema Değiştirme Butonu (Corner Widget)
+        # Sağ Üst Köşe Araç Çubuğu (Kullanım Kılavuzu + Tema Değiştirme Butonları)
+        self.corner_container = QtWidgets.QWidget()
+        layout_corner = QtWidgets.QHBoxLayout(self.corner_container)
+        layout_corner.setContentsMargins(0, 0, 8, 0)
+        layout_corner.setSpacing(6)
+
+        # 1. Kullanım Kılavuzu Butonu (ℹ)
+        self.btn_kilavuz = QtWidgets.QPushButton("ℹ Kullanım Kılavuzu")
+        self.btn_kilavuz.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_kilavuz.setStyleSheet("""
+            QPushButton {
+                background-color: #252525;
+                color: #e0e0e0;
+                border: 1.5px solid #444444;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 11px;
+                margin-top: 2px;
+                margin-bottom: 2px;
+            }
+            QPushButton:hover {
+                background-color: #333333;
+                color: #00ffcc;
+                border: 1.5px solid #00ffcc;
+            }
+        """)
+
+        # 2. Tema Değiştirme Butonu
         self.aktif_tema = "dark"
         self.btn_tema_degistir = QtWidgets.QPushButton("Tema: Dark")
         self.btn_tema_degistir.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1432,7 +1460,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 padding: 5px 14px;
                 font-weight: bold;
                 font-size: 11px;
-                margin-right: 8px;
                 margin-top: 2px;
                 margin-bottom: 2px;
             }
@@ -1442,7 +1469,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             }
         """)
         self.btn_tema_degistir.clicked.connect(self.tema_degistir)
-        self.tabWidget.setCornerWidget(self.btn_tema_degistir, QtCore.Qt.TopRightCorner)
+
+        self.btn_kilavuz.clicked.connect(self.kilavuz_ac)
+
+        layout_corner.addWidget(self.btn_kilavuz)
+        layout_corner.addWidget(self.btn_tema_degistir)
+        self.tabWidget.setCornerWidget(self.corner_container, QtCore.Qt.TopRightCorner)
 
 
 
@@ -3117,6 +3149,58 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
 
 
+    def kilavuz_ac(self):
+        """
+        @brief FADEC Kullanım Kılavuzu PDF dosyasını sistemin varsayılan PDF görüntüleyicisinde açar.
+        """
+        from PyQt5.QtGui import QDesktopServices
+        from PyQt5.QtCore import QUrl
+
+        # 1. Öncelikli aday dosya yollarını tara (Proje klasörü & PyInstaller MEIPASS uyumlu)
+        aday_yollar = [
+            kaynak_yolu("Fadec Dökümantasyon.pdf"),
+            kaynak_yolu("Fadec Dokumantasyon.pdf"),
+            kaynak_yolu("Kullanim_Kilavuzu.pdf"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "Fadec Dökümantasyon.pdf"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "Fadec Dokumantasyon.pdf"),
+            os.path.join(os.path.expanduser("~"), "Desktop", "Fadec Dökümantasyon.pdf"),
+            os.path.join(os.path.expanduser("~"), "Desktop", "Fadec Dokumantasyon.pdf"),
+        ]
+
+        hedef_pdf = None
+        for yol in aday_yollar:
+            if os.path.exists(yol):
+                hedef_pdf = os.path.abspath(yol)
+                break
+
+        # 2. Eğer özel isimle bulunamazsa, proje veya masaüstündeki ilk uygun PDF'i bul
+        if not hedef_pdf:
+            proje_dizini = os.path.dirname(os.path.abspath(__file__))
+            for dosya in os.listdir(proje_dizini):
+                if dosya.lower().endswith(".pdf") and ("fadec" in dosya.lower() or "dökümantasyon" in dosya.lower() or "dokumantasyon" in dosya.lower() or "kilavuz" in dosya.lower()):
+                    hedef_pdf = os.path.abspath(os.path.join(proje_dizini, dosya))
+                    break
+
+        if hedef_pdf and os.path.exists(hedef_pdf):
+            # Qt'nin dahili, platform bağımsız dosya açıcısıyla varsayılan PDF okuyucuda aç
+            basarili = QDesktopServices.openUrl(QUrl.fromLocalFile(hedef_pdf))
+            if not basarili:
+                # Windows için alternatif dosya açılışı
+                try:
+                    os.startfile(hedef_pdf)
+                except Exception as e:
+                    QtWidgets.QMessageBox.warning(
+                        self, "Açılış Hatası",
+                        f"PDF dosyası açılırken bir sorun oluştu:\n{e}"
+                    )
+        else:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Kılavuz Bulunamadı",
+                "Kullanım Kılavuzu PDF dosyası bulunamadı!\n\n"
+                "Lütfen 'Fadec Dökümantasyon.pdf' dosyasının proje dizininde olduğundan emin olunuz."
+            )
+
     def tema_degistir(self):
         """
         @brief Dark ve Light tema arasında geçişi yöneten ana metot.
@@ -3133,7 +3217,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     padding: 5px 14px;
                     font-weight: bold;
                     font-size: 11px;
-                    margin-right: 8px;
                     margin-top: 2px;
                     margin-bottom: 2px;
                 }
@@ -3142,6 +3225,25 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     color: #ffffff;
                 }
             """)
+            if hasattr(self, 'btn_kilavuz'):
+                self.btn_kilavuz.setStyleSheet("""
+                    QPushButton {
+                        background-color: #ffffff;
+                        color: #1e293b;
+                        border: 1.5px solid #cbd5e1;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 11px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #f1f5f9;
+                        color: #0284c7;
+                        border: 1.5px solid #0284c7;
+                    }
+                """)
             QtWidgets.qApp.setStyleSheet(ACIK_TEMA_QSS)
 
             # Dinamik Hata Bilgi Başlığı (Banner) Açık Tema
@@ -3208,7 +3310,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     padding: 5px 14px;
                     font-weight: bold;
                     font-size: 11px;
-                    margin-right: 8px;
                     margin-top: 2px;
                     margin-bottom: 2px;
                 }
@@ -3217,6 +3318,25 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     color: #121212;
                 }
             """)
+            if hasattr(self, 'btn_kilavuz'):
+                self.btn_kilavuz.setStyleSheet("""
+                    QPushButton {
+                        background-color: #252525;
+                        color: #e0e0e0;
+                        border: 1.5px solid #444444;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 11px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #333333;
+                        color: #00ffcc;
+                        border: 1.5px solid #00ffcc;
+                    }
+                """)
             QtWidgets.qApp.setStyleSheet(KOYU_TEMA_QSS)
 
             # Dinamik Hata Bilgi Başlığı (Banner) Koyu Tema
