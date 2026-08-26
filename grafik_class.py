@@ -84,12 +84,19 @@ def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#000000", line_color="#
 
 class DashboardTuval(QtWidgets.QWidget):
     """
-    @brief 25px kareli mühendislik ızgara desenine sahip koyu temalı serbest tuval.
+    @brief 25px kareli mühendislik ızgara desenine sahip serbest tuval.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.izgara_brush = kareli_izgara_deseni_olustur(25)
+
+    def tema_guncelle(self, tema="dark"):
+        if tema == "light":
+            self.izgara_brush = kareli_izgara_deseni_olustur(25, bg_color="#f8fafc", line_color="#e2e8f0")
+        else:
+            self.izgara_brush = kareli_izgara_deseni_olustur(25, bg_color="#000000", line_color="#1a1a1a")
+        self.update()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -163,7 +170,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
     # Kapatıldığında ana pencereye haber veren sinyal (C#'taki Event)
     kapandi_signal = QtCore.pyqtSignal(object)
 
-    def __init__(self, sensor_adi, df, parent=None, limitler=None, cizgi_rengi="#00ffcc"):
+    def __init__(self, sensor_adi, df, parent=None, limitler=None, cizgi_rengi="#00ffcc", tema="dark"):
         """
         @brief Kurucu fonksiyon (Constructor).
         """
@@ -172,6 +179,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.df = df
         self.limitler = limitler
         self.cizgi_rengi = cizgi_rengi
+        self.tema = tema
         self.limit_cizgileri = []
         self.ham_x = None
         self.ham_y = None
@@ -183,6 +191,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.zoom_timer.timeout.connect(self.grafik_lod_guncelle)
         self.init_ui()
         self.ciz()
+        self.tema_guncelle(self.tema)
 
     def init_ui(self):
         """
@@ -211,12 +220,12 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         layout_header.setContentsMargins(10, 0, 5, 0)
         layout_header.setSpacing(5)
 
-        lbl_baslik = QtWidgets.QLabel(f" {self.sensor_adi} ")
+        self.lbl_baslik = QtWidgets.QLabel(f" {self.sensor_adi} ")
         font_baslik = QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold)
-        lbl_baslik.setFont(font_baslik)
+        self.lbl_baslik.setFont(font_baslik)
         # Sensör ismini de temaya uygun turkuaz yapıyoruz
-        lbl_baslik.setStyleSheet("color: #00ffcc; background-color: transparent; border: none;")
-        layout_header.addWidget(lbl_baslik)
+        self.lbl_baslik.setStyleSheet("color: #00ffcc; background-color: transparent; border: none;")
+        layout_header.addWidget(self.lbl_baslik)
 
         layout_header.addStretch()
 
@@ -419,12 +428,19 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             val_min = float(np.nanmin(y_raw))
             val_max = float(np.nanmax(y_raw))
             val_avg = float(np.nanmean(y_raw))
-            # Şık HTML rozet stili
-            self.lbl_istatistik.setText(
-                f"<span style='color:#777777;'>Min:</span> <b style='color:#cccccc;'>{val_min:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-                f"<span style='color:#777777;'>Max:</span> <b style='color:#cccccc;'>{val_max:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-                f"<span style='color:#777777;'>Ort:</span> <b style='color:#cccccc;'>{val_avg:.2f}</b>"
-            )
+            # Şık HTML rozet stili (Temaya duyarlı)
+            if getattr(self, 'tema', 'dark') == 'light':
+                self.lbl_istatistik.setText(
+                    f"<span style='color:#64748b;'>Min:</span> <b style='color:#0f172a;'>{val_min:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                    f"<span style='color:#64748b;'>Max:</span> <b style='color:#0f172a;'>{val_max:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                    f"<span style='color:#64748b;'>Ort:</span> <b style='color:#0f172a;'>{val_avg:.2f}</b>"
+                )
+            else:
+                self.lbl_istatistik.setText(
+                    f"<span style='color:#777777;'>Min:</span> <b style='color:#cccccc;'>{val_min:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                    f"<span style='color:#777777;'>Max:</span> <b style='color:#cccccc;'>{val_max:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                    f"<span style='color:#777777;'>Ort:</span> <b style='color:#cccccc;'>{val_avg:.2f}</b>"
+                )
         except Exception:
             pass
 
@@ -517,7 +533,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             # 🔥 EN KRİTİK OPTİMİZASYON: Pandas yerine doğrudan NumPy dizisinden O(1) hızında okuma
             deger = self.ham_y[satir_idx]
 
-            self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : {deger:.2f}")
+            self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : <b style='color:white;'>{deger:.2f}</b>")
             self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
         else:
             # Fare bu grafikten çıktıysa imleci gizle (Diğer pencereleri rahatlatır)
@@ -646,3 +662,71 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         ana_pencere = self.window()
         if hasattr(ana_pencere, 'guncelle_tuval_boyutu'):
             ana_pencere.guncelle_tuval_boyutu(sadece_buyut=sadece_buyut)
+
+    def tema_guncelle(self, tema="dark"):
+        """
+        @brief Kartın temasını (açık/koyu) dinamik günceller.
+        """
+        self.tema = tema
+        if tema == "light":
+            self.setStyleSheet("""
+                SensorGrafikKarti {
+                    background-color: #ffffff;
+                    border: 1.5px solid #cbd5e1;
+                    border-radius: 6px;
+                }
+            """)
+            self.header_frame.setStyleSheet("background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1; border-left: 4px solid #0284c7; border-top: none; border-right: none;")
+            if hasattr(self, 'lbl_baslik'):
+                self.lbl_baslik.setStyleSheet("color: #0369a1; background-color: transparent; border: none;")
+            if hasattr(self, 'lbl_istatistik') and hasattr(self, 'ham_y') and self.ham_y is not None:
+                try:
+                    import numpy as np
+                    val_min = float(np.nanmin(self.ham_y))
+                    val_max = float(np.nanmax(self.ham_y))
+                    val_avg = float(np.nanmean(self.ham_y))
+                    self.lbl_istatistik.setText(
+                        f"<span style='color:#64748b;'>Min:</span> <b style='color:#0f172a;'>{val_min:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                        f"<span style='color:#64748b;'>Max:</span> <b style='color:#0f172a;'>{val_max:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                        f"<span style='color:#64748b;'>Ort:</span> <b style='color:#0f172a;'>{val_avg:.2f}</b>"
+                    )
+                except Exception:
+                    pass
+            self.plot_widget.setBackground('#ffffff')
+            self.plot_widget.setStyleSheet("border: 1px solid #e2e8f0; border-radius: 4px;")
+            self.plot_widget.getAxis('bottom').setPen(pg.mkPen(color='#94a3b8', width=1))
+            self.plot_widget.getAxis('left').setPen(pg.mkPen(color='#94a3b8', width=1))
+            self.plot_widget.getAxis('bottom').setTextPen(pg.mkPen(color='#334155'))
+            self.plot_widget.getAxis('left').setTextPen(pg.mkPen(color='#334155'))
+            self.plot_widget.showGrid(x=True, y=True, alpha=0.2)
+        else:
+            self.setStyleSheet("""
+                SensorGrafikKarti {
+                    background-color: #1a1a1a;
+                    border: 1px solid #333333;
+                    border-radius: 0px;
+                }
+            """)
+            self.header_frame.setStyleSheet("background-color: #252526; border-bottom: 1px solid #333333; border-left: 4px solid #00ffcc; border-top: none; border-right: none;")
+            if hasattr(self, 'lbl_baslik'):
+                self.lbl_baslik.setStyleSheet("color: #00ffcc; background-color: transparent; border: none;")
+            if hasattr(self, 'lbl_istatistik') and hasattr(self, 'ham_y') and self.ham_y is not None:
+                try:
+                    import numpy as np
+                    val_min = float(np.nanmin(self.ham_y))
+                    val_max = float(np.nanmax(self.ham_y))
+                    val_avg = float(np.nanmean(self.ham_y))
+                    self.lbl_istatistik.setText(
+                        f"<span style='color:#777777;'>Min:</span> <b style='color:#cccccc;'>{val_min:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                        f"<span style='color:#777777;'>Max:</span> <b style='color:#cccccc;'>{val_max:.2f}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+                        f"<span style='color:#777777;'>Ort:</span> <b style='color:#cccccc;'>{val_avg:.2f}</b>"
+                    )
+                except Exception:
+                    pass
+            self.plot_widget.setBackground('#121214')
+            self.plot_widget.setStyleSheet("border: 1px solid #2a2a2d; border-radius: 4px;")
+            self.plot_widget.getAxis('bottom').setPen(pg.mkPen(color='#333333', width=1))
+            self.plot_widget.getAxis('left').setPen(pg.mkPen(color='#333333', width=1))
+            self.plot_widget.getAxis('bottom').setTextPen(pg.mkPen(color='#777777'))
+            self.plot_widget.getAxis('left').setTextPen(pg.mkPen(color='#777777'))
+            self.plot_widget.showGrid(x=True, y=True, alpha=0.4)

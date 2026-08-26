@@ -151,12 +151,7 @@ class Ui_MainWindow(object):
         self.verticalLayout_tab2.addWidget(self.splitter_ana_csv)
         self.tabWidget.addTab(self.tab_2, "")
         self.tab = QtWidgets.QWidget()
-        self.tab.setStyleSheet("QSplitter::handle {\n"
-"    background-color: #333333;\n"
-"}\n"
-"QSplitter::handle:hover {\n"
-"    background-color: #00ffcc;\n"
-"}")
+        # self.tab.setStyleSheet removed for dynamic theming
         self.tab.setObjectName("tab")
         self.verticalLayout_tab_hata = QtWidgets.QVBoxLayout(self.tab)
         self.verticalLayout_tab_hata.setContentsMargins(8, 8, 8, 8)
