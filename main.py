@@ -58,6 +58,8 @@ from minmax_python import Ui_Dialog as Ui_MinMaxDialog
 from dosya_secim_python import Ui_Dialog as Ui_DosyaSecimDialog
 from radar_penceresi import Ui_Dialog as Ui_RadarDialog
 from heatmap_penceresi import Ui_Dialog as Ui_HeatmapDialog
+from ai import AIPromptBuilder
+
 
 # ==============================================================================
 # 5. MODERN KOYU TEMA (DARK THEME QSS)
@@ -484,6 +486,105 @@ QMdiArea, #tab_4 {
     border: none;
 }
 """
+
+class AIPromptPenceresi(QtWidgets.QDialog):
+    def __init__(self, prompt_metni, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Qwen Yapay Zeka - Prompt Çıktısı")
+        self.setMinimumSize(850, 650)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        # Bilgi Etiketi
+        self.lbl_bilgi = QtWidgets.QLabel(
+            "Aşağıdaki metni kopyalayarak yapay zeka arayüzüne yapıştırabilirsiniz:")
+        self.lbl_bilgi.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00ffcc;")
+        layout.addWidget(self.lbl_bilgi)
+
+        # Metin Kutusu (Sadece Okunabilir)
+        self.txt_prompt = QtWidgets.QTextEdit()
+        self.txt_prompt.setReadOnly(True)
+        self.txt_prompt.setPlainText(prompt_metni)
+        font = QtGui.QFont("Consolas", 10)
+        self.txt_prompt.setFont(font)
+        self.txt_prompt.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #e0e0e0;
+                border: 1px solid #333333;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
+        layout.addWidget(self.txt_prompt)
+
+        # Alt Butonlar Layout
+        btn_layout = QtWidgets.QHBoxLayout()
+
+        self.btn_kopyala = QtWidgets.QPushButton("📋 Panoya Kopyala")
+        self.btn_kopyala.setMinimumHeight(45)
+        self.btn_kopyala.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_kopyala.setStyleSheet("""
+            QPushButton {
+                background-color: #00ffcc;
+                color: black;
+                font-weight: bold;
+                font-size: 11pt;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #00ccaa;
+            }
+        """)
+
+        self.btn_kapat = QtWidgets.QPushButton("Kapat")
+        self.btn_kapat.setMinimumHeight(45)
+        self.btn_kapat.setCursor(QtCore.Qt.PointingHandCursor)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_kopyala, 2)
+        btn_layout.addWidget(self.btn_kapat, 1)
+
+        layout.addLayout(btn_layout)
+
+        # Sinyaller
+        self.btn_kopyala.clicked.connect(self.panoya_kopyala)
+        self.btn_kapat.clicked.connect(self.close)
+
+    def panoya_kopyala(self):
+        QtWidgets.QApplication.clipboard().setText(self.txt_prompt.toPlainText())
+        self.btn_kopyala.setText("✅ Kopyalandı!")
+        self.btn_kopyala.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                font-size: 11pt;
+                border-radius: 6px;
+            }
+        """)
+        # 2.5 Saniye sonra butonu eski haline getir
+        QtCore.QTimer.singleShot(2500, self.kopyala_reset)
+
+    def kopyala_reset(self):
+        self.btn_kopyala.setText("📋 Panoya Kopyala")
+        self.btn_kopyala.setStyleSheet("""
+            QPushButton {
+                background-color: #00ffcc;
+                color: black;
+                font-weight: bold;
+                font-size: 11pt;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #00ccaa;
+            }
+        """)
+
+
+
+
+
 
 
 
@@ -1546,6 +1647,34 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.btn_Incele.clicked.connect(self.HataBloklariniCiz)
         self.btn_heatMap.clicked.connect(self.heatmapGoster)
         self.btn_Radar.clicked.connect(self.radar_goster)
+
+        # --- YAPAY ZEKA BUTONU (SAĞ ÜST KÖŞE) ---
+        self.btn_YapayZeka = QtWidgets.QPushButton("🤖 AI Teşhis Raporu", self)
+        self.btn_YapayZeka.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_YapayZeka.setStyleSheet("""
+            QPushButton {
+                background-color: #264f78;
+                color: #00ffcc;
+                border: 1.5px solid #00ffcc;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 12px;
+                margin-top: 2px;
+            }
+            QPushButton:hover {
+                background-color: #00ffcc;
+                color: #000000;
+            }
+        """)
+        self.btn_YapayZeka.clicked.connect(self.yapay_zeka_analizi_baslat)
+        layout_corner.addWidget(self.btn_YapayZeka) # Tema butonunun yanına ekler
+        # -----------------------------------------
+
+
+
+
+
         self.btn_minmax.clicked.connect(self.minmaxPenceresiniAc)
         self.btn_dosyaYukle.clicked.connect(self.DosyaPenceresiniAc)
         self.HataBlok_List.itemClicked.connect(self.hataBlokunaBasildi)
@@ -3391,7 +3520,40 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
                     kart.tema_guncelle("dark")
 
+    def yapay_zeka_analizi_baslat(self):
+        """
+        @brief AI Promptunu oluşturur ve kopyalama penceresini ekrana getirir.
+        """
+        # --- DÜZELTİLEN KISIM BAŞLANGICI ---
+        if getattr(self, 'df', None) is None or self.df.empty:
+            QtWidgets.QMessageBox.warning(self, "Uyarı", "Lütfen önce veri yükleyin!")
+            return
 
+        if getattr(self, 'hata_kategorileri', None) is None or not self.hata_kategorileri:
+            QtWidgets.QMessageBox.warning(self, "Uyarı",
+                                          "Hata kategorileri bulunamadı! Lütfen hata loglarının yüklendiğinden emin olun.")
+            return
+        # --- DÜZELTİLEN KISIM BİTİŞİ ---
+
+        try:
+            # 1. Bekleme imlecini aç
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+
+            # 2. Builder sınıfını ai.py'den çağır ve çalıştır (Limitleri de gönderiyoruz)
+            limit_sozlugu = getattr(self, 'LIMITLER', {})
+            builder = AIPromptBuilder(df_data=self.df, hata_kategorileri=self.hata_kategorileri, limitler=limit_sozlugu)
+            uretilen_prompt = builder.prompt_derle()
+
+            # 3. İmleci normale döndür
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+            # 4. Pencereyi aç
+            dialog = AIPromptPenceresi(uretilen_prompt, parent=self)
+            dialog.exec_()
+
+        except Exception as e:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            QtWidgets.QMessageBox.critical(self, "Hata", f"Yapay Zeka analizi sırasında bir hata oluştu:\n\n{str(e)}")
 
 # ==============================================================================
 # 16. UYGULAMA BAŞLATMA (ENTRY POINT)
