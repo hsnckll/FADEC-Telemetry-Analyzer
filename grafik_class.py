@@ -127,7 +127,6 @@ class ZamanEkseniItem(pg.AxisItem):
         self.dt_saniye = 0.1  # Varsayılan 100ms
 
     def tickStrings(self, values, scale, spacing):
-        return [str(int(v)) for v in values]
         if self.baslangic_zamani is None:
             return super().tickStrings(values, scale, spacing)
 
@@ -283,7 +282,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         # X Ekseni
         axis_bottom = self.plot_widget.getAxis('bottom')
-        axis_bottom.setLabel("Zaman (İndeks)", color='#888888')
+        axis_bottom.setLabel("Zaman", color='#888888')
         axis_bottom.setPen(pg.mkPen(color='#333333', width=1))
         axis_bottom.setTextPen(pg.mkPen(color='#777777'))
         axis_bottom.setTickFont(axis_font)
@@ -311,7 +310,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.plot_widget.addItem(self.crosshair_yazi, ignoreBounds=True)
 
         # Fare hareketlerini algılayıp crosshair (imleç) değerlerini güncellemek için bağlantı
-        self.proxy = pg.SignalProxy(self.plot_widget.scene().sigMouseMoved, rateLimit=60, slot=self.fare_hareket_etti)
+        self.proxy = pg.SignalProxy(self.plot_widget.scene().sigMouseMoved, rateLimit=120, slot=self.fare_hareket_etti)
 
         layout_icerik.addWidget(self.plot_widget)
 
@@ -340,7 +339,10 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         # ... biraz aşağıda boyutlandırma olayları var:
         self.resize_handle.mousePressEvent = self.resize_basildi
         self.resize_handle.mouseMoveEvent = self.resize_suruklendi
-        self.resize_handle.mouseReleaseEvent = self.resize_birakildi  # <--- BU YENİ
+        self.resize_handle.mouseReleaseEvent = self.resize_birakildi
+
+        # Başlangıç temasını uygula
+        self.tema_guncelle(self.tema)
 
     def mousePressEvent(self, event):
         """ Karta tıklandığı an onu en üst katmana (öne) getirir. """
@@ -410,13 +412,13 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             len(self.df), dtype=np.float64)
         y_raw = self.df[self.sensor_adi].to_numpy(dtype=np.float64, copy=False)
 
-        if "Zaman_Gorsel" in self.df.columns:
+        if "Zaman_Gorsel" in self.df.columns and len(self.df) >= 2:
             try:
-                ilk_zaman = self.df["Zaman_Gorsel"].iloc[0]
-                if isinstance(ilk_zaman, str):
-                    self.zaman_ekseni.baslangic_zamani = pd.to_datetime(ilk_zaman, errors='coerce')
-                else:
-                    self.zaman_ekseni.baslangic_zamani = ilk_zaman
+                t0 = pd.to_datetime(str(self.df.iloc[0]["Zaman_Gorsel"]))
+                t1 = pd.to_datetime(str(self.df.iloc[1]["Zaman_Gorsel"]))
+                self.zaman_ekseni.baslangic_zamani = t0
+                fark = (t1 - t0).total_seconds()
+                self.zaman_ekseni.dt_saniye = fark if fark > 0 else 0.1
             except Exception:
                 pass
 
@@ -533,7 +535,10 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             # 🔥 EN KRİTİK OPTİMİZASYON: Pandas yerine doğrudan NumPy dizisinden O(1) hızında okuma
             deger = self.ham_y[satir_idx]
 
-            self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : <b style='color:white;'>{deger:.2f}</b>")
+            if getattr(self, 'tema', 'dark') == 'light':
+                self.crosshair_yazi.setHtml(f"<b style='color:#000000;'>{self.sensor_adi}</b> : <b style='color:#000000;'>{deger:.2f}</b>")
+            else:
+                self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : <b style='color:#ffffff;'>{deger:.2f}</b>")
             self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
         else:
             # Fare bu grafikten çıktıysa imleci gizle (Diğer pencereleri rahatlatır)
@@ -557,22 +562,57 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         if global_pos is None:
             global_pos = QtGui.QCursor.pos()
         menu = QtWidgets.QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: #252526;
-                color: #ffffff;
-                border: 1px solid #444444;
-                padding: 4px;
-            }
-            QMenu::item {
-                padding: 6px 20px;
-            }
-            QMenu::item:selected {
-                background-color: #00ffcc;
-                color: #000000;
-                font-weight: bold;
-            }
-        """)
+        if getattr(self, 'tema', 'dark') == 'light':
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #ffffff;
+                    color: #0f172a;
+                    border: 1.5px solid #cbd5e1;
+                    padding: 4px;
+                    border-radius: 6px;
+                }
+                QMenu::item {
+                    padding: 7px 22px;
+                    color: #1e293b;
+                    font-weight: 500;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #0284c7;
+                    color: #ffffff;
+                    font-weight: bold;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: #e2e8f0;
+                    margin: 4px 8px;
+                }
+            """)
+        else:
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #252526;
+                    color: #ffffff;
+                    border: 1px solid #444444;
+                    padding: 4px;
+                    border-radius: 6px;
+                }
+                QMenu::item {
+                    padding: 7px 22px;
+                    color: #e0e0e0;
+                    border-radius: 4px;
+                }
+                QMenu::item:selected {
+                    background-color: #00ffcc;
+                    color: #000000;
+                    font-weight: bold;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: #333333;
+                    margin: 4px 8px;
+                }
+            """)
 
         act_limit_uygula = menu.addAction("⚙️ Tanımlı Limitleri Göster")
         act_limit_sil = menu.addAction("❌ Limit Çizgilerini Kaldır")
@@ -699,6 +739,11 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             self.plot_widget.getAxis('bottom').setTextPen(pg.mkPen(color='#334155'))
             self.plot_widget.getAxis('left').setTextPen(pg.mkPen(color='#334155'))
             self.plot_widget.showGrid(x=True, y=True, alpha=0.2)
+            if hasattr(self, 'vLine'):
+                self.vLine.setPen(pg.mkPen('#0284c7', width=1.5, style=Qt.DashLine))
+            if hasattr(self, 'crosshair_yazi'):
+                self.crosshair_yazi.fill = pg.mkBrush(None)
+                self.crosshair_yazi.border = pg.mkPen(None)
         else:
             self.setStyleSheet("""
                 SensorGrafikKarti {
@@ -730,3 +775,8 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             self.plot_widget.getAxis('bottom').setTextPen(pg.mkPen(color='#777777'))
             self.plot_widget.getAxis('left').setTextPen(pg.mkPen(color='#777777'))
             self.plot_widget.showGrid(x=True, y=True, alpha=0.4)
+            if hasattr(self, 'vLine'):
+                self.vLine.setPen(pg.mkPen((255, 255, 0, 180), width=1.5, style=Qt.DashLine))
+            if hasattr(self, 'crosshair_yazi'):
+                self.crosshair_yazi.fill = pg.mkBrush(None)
+                self.crosshair_yazi.border = pg.mkPen(None)

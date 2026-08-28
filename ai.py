@@ -171,6 +171,7 @@ class AIPromptBuilder:
             return sensor_raporlari
 
         # 1. Zaman, Motor No gibi üst verileri hariç tut, sadece sayısal sensörleri al
+        # Buralar sadece bizim verimize göre gerçek motor verisine göre değil
         haric_kolonlar = set(self.hata_kategorileri + [
             'Time', 'time', 'zaman', 'Zaman_Gercek', 'Zaman_Gorsel', 'Zaman_Index',
             'Motor_No', 'Ayar_1', 'Ayar_2', 'Ayar_3'

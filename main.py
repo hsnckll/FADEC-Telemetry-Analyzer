@@ -490,15 +490,16 @@ QMdiArea, #tab_4 {
 class AIPromptPenceresi(QtWidgets.QDialog):
     def __init__(self, prompt_metni, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Qwen Yapay Zeka - Prompt Çıktısı")
+        self.setWindowTitle("Yapay Zeka - Prompt Çıktısı")
         self.setMinimumSize(850, 650)
+        self.aktif_tema = getattr(parent, 'aktif_tema', 'dark') if parent is not None else 'dark'
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
 
         # Bilgi Etiketi
-        self.lbl_bilgi = QtWidgets.QLabel(
-            "Aşağıdaki metni kopyalayarak yapay zeka arayüzüne yapıştırabilirsiniz:")
-        self.lbl_bilgi.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00ffcc;")
+        self.lbl_bilgi = QtWidgets.QLabel("Aşağıdaki metni kopyalayarak yapay zeka arayüzüne yapıştırabilirsiniz:")
         layout.addWidget(self.lbl_bilgi)
 
         # Metin Kutusu (Sadece Okunabilir)
@@ -507,38 +508,17 @@ class AIPromptPenceresi(QtWidgets.QDialog):
         self.txt_prompt.setPlainText(prompt_metni)
         font = QtGui.QFont("Consolas", 10)
         self.txt_prompt.setFont(font)
-        self.txt_prompt.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #e0e0e0;
-                border: 1px solid #333333;
-                border-radius: 4px;
-                padding: 10px;
-            }
-        """)
         layout.addWidget(self.txt_prompt)
 
         # Alt Butonlar Layout
         btn_layout = QtWidgets.QHBoxLayout()
 
         self.btn_kopyala = QtWidgets.QPushButton("📋 Panoya Kopyala")
-        self.btn_kopyala.setMinimumHeight(45)
+        self.btn_kopyala.setMinimumHeight(44)
         self.btn_kopyala.setCursor(QtCore.Qt.PointingHandCursor)
-        self.btn_kopyala.setStyleSheet("""
-            QPushButton {
-                background-color: #00ffcc;
-                color: black;
-                font-weight: bold;
-                font-size: 11pt;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #00ccaa;
-            }
-        """)
 
         self.btn_kapat = QtWidgets.QPushButton("Kapat")
-        self.btn_kapat.setMinimumHeight(45)
+        self.btn_kapat.setMinimumHeight(44)
         self.btn_kapat.setCursor(QtCore.Qt.PointingHandCursor)
 
         btn_layout.addStretch()
@@ -551,16 +531,107 @@ class AIPromptPenceresi(QtWidgets.QDialog):
         self.btn_kopyala.clicked.connect(self.panoya_kopyala)
         self.btn_kapat.clicked.connect(self.close)
 
+        self.tema_uygula()
+
+    def tema_uygula(self):
+        if self.aktif_tema == "light":
+            self.setStyleSheet("QDialog { background-color: #f8fafc; }")
+            self.lbl_bilgi.setStyleSheet("font-weight: bold; font-size: 11pt; color: #0284c7; background: transparent;")
+            self.txt_prompt.setStyleSheet("""
+                QTextEdit {
+                    background-color: #ffffff;
+                    color: #0f172a;
+                    border: 1.5px solid #cbd5e1;
+                    border-radius: 6px;
+                    padding: 12px;
+                    selection-background-color: #0284c7;
+                    selection-color: #ffffff;
+                }
+            """)
+            self.btn_kopyala.setStyleSheet("""
+                QPushButton {
+                    background-color: #0284c7;
+                    color: #ffffff;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    border-radius: 6px;
+                    border: 1px solid #0284c7;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #0369a1;
+                    border-color: #0369a1;
+                }
+            """)
+            self.btn_kapat.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffffff;
+                    color: #334155;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    border-radius: 6px;
+                    border: 1.5px solid #cbd5e1;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #f1f5f9;
+                    color: #0f172a;
+                }
+            """)
+        else:
+            self.setStyleSheet("QDialog { background-color: #1e1e1e; }")
+            self.lbl_bilgi.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00ffcc; background: transparent;")
+            self.txt_prompt.setStyleSheet("""
+                QTextEdit {
+                    background-color: #181818;
+                    color: #e0e0e0;
+                    border: 1px solid #333333;
+                    border-radius: 6px;
+                    padding: 12px;
+                    selection-background-color: #00ffcc;
+                    selection-color: #000000;
+                }
+            """)
+            self.btn_kopyala.setStyleSheet("""
+                QPushButton {
+                    background-color: #00ffcc;
+                    color: #000000;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #00ccaa;
+                }
+            """)
+            self.btn_kapat.setStyleSheet("""
+                QPushButton {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                    font-weight: bold;
+                    font-size: 11pt;
+                    border-radius: 6px;
+                    border: 1px solid #444444;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #383838;
+                }
+            """)
+
     def panoya_kopyala(self):
         QtWidgets.QApplication.clipboard().setText(self.txt_prompt.toPlainText())
         self.btn_kopyala.setText("✅ Kopyalandı!")
         self.btn_kopyala.setStyleSheet("""
             QPushButton {
-                background-color: #28a745;
-                color: white;
+                background-color: #16a34a;
+                color: #ffffff;
                 font-weight: bold;
                 font-size: 11pt;
                 border-radius: 6px;
+                padding: 6px 14px;
+                border: 1px solid #16a34a;
             }
         """)
         # 2.5 Saniye sonra butonu eski haline getir
@@ -568,18 +639,7 @@ class AIPromptPenceresi(QtWidgets.QDialog):
 
     def kopyala_reset(self):
         self.btn_kopyala.setText("📋 Panoya Kopyala")
-        self.btn_kopyala.setStyleSheet("""
-            QPushButton {
-                background-color: #00ffcc;
-                color: black;
-                font-weight: bold;
-                font-size: 11pt;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #00ccaa;
-            }
-        """)
+        self.tema_uygula()
 
 
 
@@ -1649,7 +1709,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.btn_Radar.clicked.connect(self.radar_goster)
 
         # --- YAPAY ZEKA BUTONU (SAĞ ÜST KÖŞE) ---
-        self.btn_YapayZeka = QtWidgets.QPushButton("🤖 AI Teşhis Raporu", self)
+        self.btn_YapayZeka = QtWidgets.QPushButton("AI Teşhis Raporu", self)
         self.btn_YapayZeka.setCursor(QtCore.Qt.PointingHandCursor)
         self.btn_YapayZeka.setStyleSheet("""
             QPushButton {
@@ -1734,24 +1794,33 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         # Crosshair (Fare Takip İmleçleri)
         self.hLine = pg.InfiniteLine(angle=0)
+        self.hLine.setZValue(999)
         self.vLine = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen((255, 255, 0, 180), width=1.5, style=QtCore.Qt.DashLine))
+        self.vLine.setZValue(999)
         self.crosshair_yazi = pg.TextItem(anchor=(0, 1), color="white", fill=pg.mkBrush(15, 23, 42, 230), border=pg.mkPen('#00ffcc', width=1))
+        self.crosshair_yazi.setZValue(1000)
         self.analiz_grafigi.addItem(self.hLine, ignoreBounds=True)
         self.analiz_grafigi.addItem(self.vLine, ignoreBounds=True)
         self.analiz_grafigi.addItem(self.crosshair_yazi, ignoreBounds=True)
+        self.vLine.hide()
+        self.hLine.hide()
+        self.crosshair_yazi.hide()
         self.proxy = pg.SignalProxy(self.analiz_grafigi.scene().sigMouseMoved, rateLimit=120, slot=self.mouseHareketEtti)
 
         self.vLine_hata = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(color=(255, 255, 0, 150), width=1))
+        self.vLine_hata.setZValue(999)
         self.hLine_hata = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen(color=(255, 255, 0, 150), width=1))
+        self.hLine_hata.setZValue(999)
+        self.crosshair_yazi_hata = pg.TextItem(anchor=(0, 1), color="white", fill=pg.mkBrush(15, 23, 42, 230), border=pg.mkPen('#00ffcc', width=1))
+        self.crosshair_yazi_hata.setZValue(1000)
         self.hata_grafik.addItem(self.vLine_hata, ignoreBounds=True)
         self.hata_grafik.addItem(self.hLine_hata, ignoreBounds=True)
-        self.crosshair_yazi_hata = pg.TextItem(anchor=(0, 1), color="white", fill=pg.mkBrush(15, 23, 42, 230), border=pg.mkPen('#00ffcc', width=1))
         self.hata_grafik.addItem(self.crosshair_yazi_hata, ignoreBounds=True)
         # Başlangıçta imleçleri gizle
         self.vLine_hata.hide()
         self.hLine_hata.hide()
         self.crosshair_yazi_hata.hide()
-        self.proxy_hata = pg.SignalProxy(self.hata_grafik.scene().sigMouseMoved, rateLimit=60, slot=self.mouseHareketEtti_Hata)
+        self.proxy_hata = pg.SignalProxy(self.hata_grafik.scene().sigMouseMoved, rateLimit=120, slot=self.mouseHareketEtti_Hata)
 
         # LOD Zamanlayıcıları (Tab 1 & Tab 2)
         self.zoom_timer = QtCore.QTimer()
@@ -1851,6 +1920,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             plot_item.legend.scene().removeItem(plot_item.legend)
             plot_item.legend = None
         self.hata_grafik.addLegend(offset=(10, 10))
+
+        if hasattr(self, 'vLine_hata'):
+            self.vLine_hata.hide()
+        if hasattr(self, 'crosshair_yazi_hata'):
+            self.crosshair_yazi_hata.hide()
 
 
     def grafik_lod_guncelle_genel(self):
@@ -2006,7 +2080,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         # 🔥 Tablo üstündeki başlık rozetini dinamik olarak güncelle
         if hasattr(self, 'lbl_hata_tablo_baslik'):
             toplam_satir = len(blok_verisi)
-            self.lbl_hata_tablo_baslik.setText(f" Hata Türü: {secili_kategori}   |   {blok_metni}   |    Satır Aralığı: [{bas:,} - {bit:,}] ({toplam_satir:,} Satır)")
+            self.lbl_hata_tablo_baslik.setText(f" Hata Türü: {secili_kategori}   |   {blok_metni}   |   {toplam_satir:,} Satır")
 
         hata_kats = getattr(self, 'hata_kategorileri', [])
         model = PandasModel(blok_verisi, hata_kategorileri=hata_kats)
@@ -2232,9 +2306,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             plot_item.legend = None
         self.hata_grafik.addLegend(offset=(10, 10))
 
+        self.vLine_hata.setZValue(999)
+        self.hLine_hata.setZValue(999)
+        self.crosshair_yazi_hata.setZValue(1000)
         self.hata_grafik.addItem(self.vLine_hata, ignoreBounds=True)
         self.hata_grafik.addItem(self.hLine_hata, ignoreBounds=True)
-        self.hata_grafik.addItem(self.crosshair_yazi_hata)
+        self.hata_grafik.addItem(self.crosshair_yazi_hata, ignoreBounds=True)
 
         self.aktif_cizgiler_hata = {}
         self.aktif_ham_veriler_hata = {}
@@ -2331,6 +2408,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.analiz_grafigi.removeItem(cizgiNesnesi)
         self.aktif_cizgiler.clear()
         self.tbl_istatistik.setRowCount(0)
+        if hasattr(self, 'vLine'):
+            self.vLine.hide()
+        if hasattr(self, 'crosshair_yazi'):
+            self.crosshair_yazi.hide()
 
     def grafigiKaydet(self):
         """
@@ -2364,6 +2445,14 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if self.df is None or len(self.df) == 0:
             return
 
+        # Çizili sensör yoksa crosshair gösterme
+        if not getattr(self, 'aktif_cizgiler', None):
+            if hasattr(self, 'vLine'):
+                self.vLine.hide()
+            if hasattr(self, 'crosshair_yazi'):
+                self.crosshair_yazi.hide()
+            return
+
         pos = kordinat[0]
         if self.analiz_grafigi.sceneBoundingRect().contains(pos):
             mouse_noktasi = self.analiz_grafigi.plotItem.vb.mapSceneToView(pos)
@@ -2377,6 +2466,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 return
 
             self.vLine.setPos(gercekZaman)
+            self.vLine.show()
             self.hLine.setPos(-9999)
 
             if "Zaman_Gorsel" in self.df.columns:
@@ -2394,13 +2484,22 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
             self.crosshair_yazi.setHtml("<br>".join(satirlar))
             self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
+            self.crosshair_yazi.show()
 
     def mouseHareketEtti_Hata(self, kordinat):
         """
         @brief Hata grafiğinde fare hareket ettiğinde crosshair ve limit aşım durumunu günceller.
         @param kordinat (tuple) Fare sahne koordinatı.
         """
-        if self.df is None:
+        if self.df is None or len(self.df) == 0:
+            return
+
+        # Çizili hata eğrisi yoksa crosshair gösterme
+        if not getattr(self, 'aktif_cizgiler_hata', None):
+            if hasattr(self, 'vLine_hata'):
+                self.vLine_hata.hide()
+            if hasattr(self, 'crosshair_yazi_hata'):
+                self.crosshair_yazi_hata.hide()
             return
 
         pos = kordinat[0]
@@ -2411,29 +2510,31 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             except (OverflowError, ValueError):
                 return
 
+            satir_idx = gercekZaman - 1
+            if satir_idx < 0 or satir_idx >= len(self.df):
+                return
+
             self.vLine_hata.setPos(gercekZaman)
+            self.vLine_hata.show()
             self.hLine_hata.setPos(-9999)
 
-            IstenenVeri = self.df[self.df["Zaman_Index"] == gercekZaman]
-            if not IstenenVeri.empty:
-                gorsel_saat = IstenenVeri["Zaman_Gorsel"].values[0]
-                if not isinstance(gorsel_saat, str):
-                    gorsel_saat = pd.to_datetime(gorsel_saat).strftime("%H:%M:%S")
+            if "Zaman_Gorsel" in self.df.columns:
+                gorsel_saat = str(self.df.iat[satir_idx, self.df.columns.get_loc("Zaman_Gorsel")])
             else:
                 gorsel_saat = str(gercekZaman)
 
             gosterilecek_metin = f"<span style='color: #38bdf8; font-weight: bold;'>Zaman: {gorsel_saat}</span><br><br>"
 
+            aktif_limitler = getattr(self, 'secili_limit_sensorleri', [])
+            limit_sozlugu = getattr(self, 'LIMITLER', {})
+
             for kolonadi, cizgi_nesnesi in self.aktif_cizgiler_hata.items():
-                if not IstenenVeri.empty:
-                    deger = IstenenVeri[kolonadi].values[0]
+                if kolonadi in self.df.columns:
+                    col_idx = self.df.columns.get_loc(kolonadi)
+                    deger = self.df.iat[satir_idx, col_idx]
                     renk_kodu = cizgi_nesnesi.opts['pen'].color().name()
 
                     ek_metin = ""
-                    # Sadece Limit Ayarlarından aktif edilmiş sensörler için aşım uyarısı göster:
-                    aktif_limitler = getattr(self, 'secili_limit_sensorleri', [])
-                    limit_sozlugu = getattr(self, 'LIMITLER', {})
-
                     if kolonadi in aktif_limitler and kolonadi in limit_sozlugu:
                         alt_lim, ust_lim = limit_sozlugu[kolonadi]
                         if deger > ust_lim:
@@ -2443,11 +2544,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                             sapma = alt_lim - deger
                             ek_metin = f" <b style='color: #FF4500;'>(Aşım: -{sapma:.2f})</b>"
 
-
                     gosterilecek_metin += f"<span style='color: {renk_kodu};'>{kolonadi} : {deger:.2f}{ek_metin}</span><br>"
 
             self.crosshair_yazi_hata.setHtml(gosterilecek_metin)
             self.crosshair_yazi_hata.setPos(gercekZaman, mouse_noktasi.y())
+            self.crosshair_yazi_hata.show()
 
     # ==========================================================================
     # 14. TABLO VE SÜTUN ETKİLEŞİMİ (SANAL MODEL ENTEGRASYONU)
@@ -2581,6 +2682,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 pen=pg.mkPen(color=renk, width=1),
                 name=secilen_sutun
             )
+            yeniCizgi.setZValue(0)
             self.aktif_cizgiler[secilen_sutun] = yeniCizgi
 
             # İstatistikleri Ekle
@@ -3373,6 +3475,24 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         border: 1.5px solid #0284c7;
                     }
                 """)
+            if hasattr(self, 'btn_YapayZeka'):
+                self.btn_YapayZeka.setStyleSheet("""
+                    QPushButton {
+                        background-color: #ffffff;
+                        color: #0284c7;
+                        border: 1.5px solid #0284c7;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #0284c7;
+                        color: #ffffff;
+                    }
+                """)
             QtWidgets.qApp.setStyleSheet(ACIK_TEMA_QSS)
 
             # Dinamik Hata Bilgi Başlığı (Banner) Açık Tema
@@ -3414,10 +3534,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             if hasattr(self, 'vLine_hata'):
                 self.vLine_hata.setPen(pg.mkPen('#0284c7', width=1.5, style=QtCore.Qt.DashLine))
             if hasattr(self, 'crosshair_yazi'):
-                self.crosshair_yazi.fill = pg.mkBrush(15, 23, 42, 230)
+                self.crosshair_yazi.fill = pg.mkBrush(30, 41, 59, 130)
                 self.crosshair_yazi.border = pg.mkPen('#0284c7', width=1.5)
             if hasattr(self, 'crosshair_yazi_hata'):
-                self.crosshair_yazi_hata.fill = pg.mkBrush(15, 23, 42, 230)
+                self.crosshair_yazi_hata.fill = pg.mkBrush(30, 41, 59, 130)
                 self.crosshair_yazi_hata.border = pg.mkPen('#0284c7', width=1.5)
 
             # Serbest Tuval ve Kartları Açık Temaya Güncelle
@@ -3464,6 +3584,24 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         background-color: #333333;
                         color: #00ffcc;
                         border: 1.5px solid #00ffcc;
+                    }
+                """)
+            if hasattr(self, 'btn_YapayZeka'):
+                self.btn_YapayZeka.setStyleSheet("""
+                    QPushButton {
+                        background-color: #264f78;
+                        color: #00ffcc;
+                        border: 1.5px solid #00ffcc;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #00ffcc;
+                        color: #000000;
                     }
                 """)
             QtWidgets.qApp.setStyleSheet(KOYU_TEMA_QSS)
