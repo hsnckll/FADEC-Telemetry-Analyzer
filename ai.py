@@ -248,7 +248,7 @@ class AIPromptBuilder:
         toplam_blok_sayisi = sum(len(bloklar) for bloklar in hata_ozetleri.values())
         kategori_sayisi = len(self.hata_kategorileri)
 
-        # Toplam oturum süresini dinamik hesapla
+        # Toplam oturum süresini dinamik hesapla, Buralara dikkat et.
         zaman_kolonu = None
         for col in ['Zaman_Gercek', 'Time', 'zaman', 'time', 'Zaman_Gorsel']:
             if col in self.df.columns:

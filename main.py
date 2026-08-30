@@ -59,6 +59,7 @@ from dosya_secim_python import Ui_Dialog as Ui_DosyaSecimDialog
 from radar_penceresi import Ui_Dialog as Ui_RadarDialog
 from heatmap_penceresi import Ui_Dialog as Ui_HeatmapDialog
 from ai import AIPromptBuilder
+from generate_pdf import PDFRaporMotoru
 
 
 # ==============================================================================
@@ -1709,7 +1710,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.btn_Radar.clicked.connect(self.radar_goster)
 
         # --- YAPAY ZEKA BUTONU (SAĞ ÜST KÖŞE) ---
-        self.btn_YapayZeka = QtWidgets.QPushButton("AI Teşhis Raporu", self)
+        self.btn_YapayZeka = QtWidgets.QPushButton("Prompt Üret", self)
         self.btn_YapayZeka.setCursor(QtCore.Qt.PointingHandCursor)
         self.btn_YapayZeka.setStyleSheet("""
             QPushButton {
@@ -1729,6 +1730,28 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         """)
         self.btn_YapayZeka.clicked.connect(self.yapay_zeka_analizi_baslat)
         layout_corner.addWidget(self.btn_YapayZeka) # Tema butonunun yanına ekler
+
+        # --- PDF RAPORU BUTONU (SAĞ ÜST KÖŞE) ---
+        self.btn_PdfRapor = QtWidgets.QPushButton("PDF Raporu", self)
+        self.btn_PdfRapor.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_PdfRapor.setStyleSheet("""
+            QPushButton {
+                background-color: #1e3a5f;
+                color: #38bdf8;
+                border: 1.5px solid #38bdf8;
+                border-radius: 5px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 12px;
+                margin-top: 2px;
+            }
+            QPushButton:hover {
+                background-color: #38bdf8;
+                color: #0f172a;
+            }
+        """)
+        self.btn_PdfRapor.clicked.connect(self.pdf_raporu_olustur)
+        layout_corner.addWidget(self.btn_PdfRapor)
         # -----------------------------------------
 
 
@@ -3281,10 +3304,17 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             QtWidgets.QMessageBox.information(self, "Sensör Bulunamadı", "Görüntülenebilecek uygun bir sensör kolonu bulunamadı.")
             return
 
-        # Sensör Seçim Açılır Kutusu (QInputDialog)
-        secilen_sensor, ok = QtWidgets.QInputDialog.getItem(
-            self, "Grafik Ekle", "Görüntülemek istediğiniz sensörü seçiniz:", sensor_listesi, 0, False
-        )
+        # Sensör Seçim Açılır Kutusu (QInputDialog - Türkçe Butonlar)
+        dialog = QtWidgets.QInputDialog(self)
+        dialog.setWindowTitle("Grafik Ekle")
+        dialog.setLabelText("Görüntülemek istediğiniz sensörü seçiniz:")
+        dialog.setComboBoxItems(sensor_listesi)
+        dialog.setComboBoxEditable(False)
+        dialog.setOkButtonText("Oluştur")
+        dialog.setCancelButtonText("Vazgeç")
+        
+        ok = (dialog.exec_() == QtWidgets.QDialog.Accepted)
+        secilen_sensor = dialog.textValue()
         if not ok or not secilen_sensor:
             return
 
@@ -3493,6 +3523,24 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         color: #ffffff;
                     }
                 """)
+            if hasattr(self, 'btn_PdfRapor'):
+                self.btn_PdfRapor.setStyleSheet("""
+                    QPushButton {
+                        background-color: #ffffff;
+                        color: #0369a1;
+                        border: 1.5px solid #0369a1;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #0369a1;
+                        color: #ffffff;
+                    }
+                """)
             QtWidgets.qApp.setStyleSheet(ACIK_TEMA_QSS)
 
             # Dinamik Hata Bilgi Başlığı (Banner) Açık Tema
@@ -3604,6 +3652,24 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         color: #000000;
                     }
                 """)
+            if hasattr(self, 'btn_PdfRapor'):
+                self.btn_PdfRapor.setStyleSheet("""
+                    QPushButton {
+                        background-color: #1e3a5f;
+                        color: #38bdf8;
+                        border: 1.5px solid #38bdf8;
+                        border-radius: 5px;
+                        padding: 5px 12px;
+                        font-weight: bold;
+                        font-size: 12px;
+                        margin-top: 2px;
+                        margin-bottom: 2px;
+                    }
+                    QPushButton:hover {
+                        background-color: #38bdf8;
+                        color: #0f172a;
+                    }
+                """)
             QtWidgets.qApp.setStyleSheet(KOYU_TEMA_QSS)
 
             # Dinamik Hata Bilgi Başlığı (Banner) Koyu Tema
@@ -3692,6 +3758,65 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         except Exception as e:
             QtWidgets.QApplication.restoreOverrideCursor()
             QtWidgets.QMessageBox.critical(self, "Hata", f"Yapay Zeka analizi sırasında bir hata oluştu:\n\n{str(e)}")
+
+    def pdf_raporu_olustur(self):
+        """
+        @brief Telemetri verilerini analiz ederek otomatik A4 PDF test ve teşhis raporu oluşturur.
+        """
+        if getattr(self, 'df', None) is None or self.df.empty:
+            QtWidgets.QMessageBox.warning(self, "Uyarı", "Lütfen önce bir veri seti yükleyiniz!")
+            return
+
+        # Varsayılan dosya adı önerisi
+        simdi_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        varsayilan_yol = f"FADEC_Test_Raporu_{simdi_str}.pdf"
+
+        dosya_yolu, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "PDF Test Raporunu Kaydet", varsayilan_yol, "PDF Dosyası (*.pdf)"
+        )
+
+        if not dosya_yolu:
+            return
+
+        try:
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+
+            oturum_adi = "Aktif Telemetri Test Oturumu"
+            if hasattr(self, 'tbl_log_oturumlar') and self.tbl_log_oturumlar.currentRow() != -1:
+                row = self.tbl_log_oturumlar.currentRow()
+                item = self.tbl_log_oturumlar.item(row, 0)
+                if item and item.text():
+                    oturum_adi = item.text()
+
+            motor = PDFRaporMotoru(
+                df=self.df,
+                hata_kategorileri=getattr(self, 'hata_kategorileri', []),
+                limitler=getattr(self, 'LIMITLER', {}),
+                oturum_adi=oturum_adi
+            )
+            basarili, mesaj = motor.pdf_kaydet(dosya_yolu)
+        except Exception as e:
+            basarili = False
+            mesaj = f"Beklenmeyen bir hata oluştu:\n{str(e)}"
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+        if basarili:
+            msg_box = QtWidgets.QMessageBox(self)
+            msg_box.setWindowTitle("Rapor Oluşturuldu")
+            msg_box.setText(f"Test ve Teşhis Raporu başarıyla oluşturuldu:\n\n{dosya_yolu}\n\nRaporu şimdi açmak ister misiniz?")
+            msg_box.setIcon(QtWidgets.QMessageBox.Question)
+            btn_evet = msg_box.addButton("Evet", QtWidgets.QMessageBox.YesRole)
+            btn_hayir = msg_box.addButton("Hayır", QtWidgets.QMessageBox.NoRole)
+            msg_box.setDefaultButton(btn_evet)
+            msg_box.exec_()
+            if msg_box.clickedButton() == btn_evet:
+                try:
+                    QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(dosya_yolu))
+                except Exception:
+                    os.startfile(dosya_yolu)
+        else:
+            QtWidgets.QMessageBox.critical(self, "Rapor Hatası", mesaj)
 
 # ==============================================================================
 # 16. UYGULAMA BAŞLATMA (ENTRY POINT)
