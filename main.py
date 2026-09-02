@@ -708,6 +708,153 @@ def csv_ayrac_tespit_et(dosya_yolu):
     return ','
 
 
+def dosya_turu_ve_frekans_analiz_et(dosya_yolu):
+    """
+    @brief CSV/Excel dosyasını kolon indekslerine veya isimlerine BAKMAKSIZIN:
+           1. Datetime formatındaki zaman kolonunu nerede olursa olsun dinamik tespit eder.
+           2. Zaman kolonunun frekansını (ms) ölçer.
+           3. Kalan diğer kolonların değer dağılımını (Sürekli Float vs Ayrık 0/1) matematiksel olarak analiz eder.
+    @return (tip, dt_ms, kolon_sayisi) Örn: ('DATA', 100.0, 28) veya ('EVENT', 10.0, 6)
+    """
+    try:
+        if not dosya_yolu or not os.path.exists(dosya_yolu):
+            return 'UNKNOWN', None, 0
+
+        if dosya_yolu.lower().endswith('.csv'):
+            ayrac = csv_ayrac_tespit_et(dosya_yolu)
+            df_on = pd.read_csv(dosya_yolu, sep=ayrac, nrows=10, on_bad_lines='skip', encoding='utf-8', encoding_errors='ignore')
+        else:
+            df_on = pd.read_excel(dosya_yolu, nrows=10)
+
+        if df_on.empty or len(df_on.columns) < 2:
+            return 'UNKNOWN', None, len(df_on.columns) if not df_on.empty else 0
+
+        # 1. Datetime Formatındaki Zaman Kolonunu Konumundan Bağımsız Dinamik Tespit Et
+        zaman_kolonu = None
+        dt_ms = None
+
+        for col in df_on.columns:
+            if not pd.api.types.is_numeric_dtype(df_on[col]):
+                seri = pd.to_datetime(df_on[col].astype(str), errors='coerce')
+                if seri.iloc[:3].notna().sum() >= 2:
+                    t0, t1 = seri.iloc[0], seri.iloc[1]
+                    if pd.notna(t0) and pd.notna(t1):
+                        fark = abs((t1 - t0).total_seconds() * 1000.0)
+                        if 0.1 <= fark <= 86400000.0:
+                            zaman_kolonu = col
+                            dt_ms = fark
+                            break
+
+        if zaman_kolonu is None:
+            zaman_kolonu = df_on.columns[0]
+
+        # 2. Tespit Edilen Zaman Kolonu HARİÇ Kalan Kolonların Matematiksel Dağılımı
+        kalan_kolonlar = [c for c in df_on.columns if c != zaman_kolonu]
+        binary_kolon_sayisi = 0
+        surekli_kolon_sayisi = 0
+
+        for col in kalan_kolonlar:
+            vals = pd.to_numeric(df_on[col], errors='coerce').dropna()
+            if vals.empty:
+                continue
+            benzersizler = set(vals.unique())
+            # Sütundaki değerler sadece {0, 1} ikili bayraklarından mı oluşuyor?
+            if benzersizler.issubset({0, 1, 0.0, 1.0}):
+                binary_kolon_sayisi += 1
+            else:
+                surekli_kolon_sayisi += 1
+
+        kolon_sayisi = len(df_on.columns)
+
+        # 3. Dinamik Karar
+        if dt_ms is not None and dt_ms <= 25.0:
+            tip = 'EVENT'
+        elif binary_kolon_sayisi > 0 and surekli_kolon_sayisi == 0:
+            tip = 'EVENT'
+        elif surekli_kolon_sayisi > binary_kolon_sayisi or kolon_sayisi >= 12:
+            tip = 'DATA'
+        else:
+            tip = 'EVENT' if (binary_kolon_sayisi > surekli_kolon_sayisi) else 'DATA'
+
+        return tip, dt_ms, kolon_sayisi
+    except Exception:
+        return 'UNKNOWN', None, 0
+
+
+def oturum_dosyalarini_dogrula(parent_widget, data_yolu, event_yolu=None):
+    """
+    @brief Data ve Event dosyalarının frekansını (ms) ve semantiğini analiz edip doğrular.
+    @param parent_widget (QWidget) Uyarı kutusunun açılacağı ebeveyn pencere.
+    @param data_yolu (str) Data Log dosya yolu.
+    @param event_yolu (str) Event Log dosya yolu.
+    @return (bool) Doğrulama başarılıysa True, hatalıysa False.
+    """
+    if not data_yolu or not os.path.exists(data_yolu):
+        QtWidgets.QMessageBox.warning(parent_widget, "Dosya Bulunamadı", "Lütfen geçerli bir Data Log dosyası seçiniz.")
+        return False
+
+    # 1. Aynı dosya seçimi kontrolü
+    if event_yolu and os.path.exists(event_yolu):
+        if os.path.abspath(data_yolu) == os.path.abspath(event_yolu):
+            QtWidgets.QMessageBox.warning(
+                parent_widget, "Hatalı Seçim",
+                "Aynı dosyayı hem Data hem de Event olarak seçemezsiniz!\nLütfen iki farklı dosya seçiniz."
+            )
+            return False
+
+    tip_data, dt_data, n_data = dosya_turu_ve_frekans_analiz_et(data_yolu)
+
+    # 2. Sadece Data Log seçilmişse (veya tekil kontrol)
+    if not event_yolu:
+        if tip_data == 'EVENT':
+            dt_metin = f"~{dt_data:.1f} ms" if dt_data is not None else "yüksek frekans"
+            QtWidgets.QMessageBox.critical(
+                parent_widget, "Geçersiz Data Log Dosyası",
+                f"❌ Seçtiğiniz Data Log dosyasının arıza kaydı (Event Log: {dt_metin}, {n_data} kolon) olduğu tespit edildi.\n\n"
+                f"Lütfen geçerli bir Sensör Ölçüm (Data Log: ~100 ms) dosyası seçiniz."
+            )
+            return False
+        return True
+
+    # 3. Hem Data hem Event seçilmişse Çapraz Eşleşme Analizi
+    tip_event, dt_event, n_event = dosya_turu_ve_frekans_analiz_et(event_yolu)
+
+    # Senaryo A: İki dosya da DATA ise (Kullanıcının yaptığı test senaryosu)
+    if tip_data == 'DATA' and tip_event == 'DATA':
+        QtWidgets.QMessageBox.critical(
+            parent_widget, "Geçersiz Dosya Eşleşmesi",
+            f"❌ Seçilen iki dosya da 'Sensör Ölçümü' (Data Log) dosyasıdır!\n\n"
+            f"Lütfen 1 adet Data Log ve 1 adet Event Log dosyası seçiniz."
+        )
+        return False
+
+    # Senaryo B: İki dosya da EVENT ise
+    if tip_data == 'EVENT' and tip_event == 'EVENT':
+        QtWidgets.QMessageBox.critical(
+            parent_widget, "Geçersiz Dosya Eşleşmesi",
+            f"❌ Seçilen iki dosya da 'Arıza Kaydı' (Event Log) dosyasıdır!\n\n"
+            f"• 1. Dosya: Event Log ({n_data} arıza kolonu)\n"
+            f"• 2. Dosya: Event Log ({n_event} arıza kolonu)\n\n"
+            f"Lütfen 1 adet Data Log ve 1 adet Event Log dosyası seçiniz."
+        )
+        return False
+
+    # Senaryo C: Dosyaların yerleri ters seçildiyse
+    if tip_data == 'EVENT' and tip_event == 'DATA':
+        dt_d_metin = f"~{dt_data:.1f} ms" if dt_data is not None else "10 ms"
+        dt_e_metin = f"~{dt_event:.1f} ms" if dt_event is not None else "100 ms"
+        QtWidgets.QMessageBox.critical(
+            parent_widget, "Dosyalar Ters Seçildi",
+            f"❌ Dosyaların yerleri ters yerleştirilmiş!\n\n"
+            f"• Data Kutusunda: Event Log ({dt_d_metin}, {n_data} arıza kolonu)\n"
+            f"• Event Kutusunda: Data Log ({dt_e_metin}, {n_event} sensör kolonu)\n\n"
+            f"Lütfen dosyaları doğru kutulara yerleştiriniz."
+        )
+        return False
+
+    return True
+
+
 class ZamanEkseniItem(pg.AxisItem):
     """
     @brief X Eksenindeki zaman indekslerini dinamik Saat:Dakika formatına çeviren özel eksen bileşeni.
@@ -1081,7 +1228,8 @@ class YuklemeThread(QtCore.QThread):
             ilk_zaman_str = df_data.iloc[0][data_zaman_kolonu]
             baslangic_zamani = pd.to_datetime(ilk_zaman_str, errors='coerce')
 
-            hata_kolonlari = [col for col in df_event.columns if col != event_zaman_kolonu]
+            haric_kolonlar = {'time', 'zaman_gercek', 'zaman_gorsel', 'zaman_index', 'motor_no', 'ayar_1', 'ayar_2', 'ayar_3', str(event_zaman_kolonu).lower()}
+            hata_kolonlari = [col for col in df_event.columns if str(col).lower() not in haric_kolonlar]
             if not hata_kolonlari:
                 hata_kolonlari = ["Hata_Durumu"]
                 df_event["Hata_Durumu"] = 1
@@ -1092,7 +1240,7 @@ class YuklemeThread(QtCore.QThread):
 
             if baslangic_zamani is not pd.NaT:
                 for hata_kolonu in hata_kolonlari:
-                    aktif_olaylar = df_event[df_event[hata_kolonu] == 1]
+                    aktif_olaylar = df_event[pd.to_numeric(df_event[hata_kolonu], errors='coerce').fillna(0) == 1]
                     if aktif_olaylar.empty:
                         continue
 
@@ -1163,11 +1311,15 @@ class DosyaSecimPenceresi(QtWidgets.QDialog):
         """
         @brief Seçilen dosya yollarını doğrular ve ana pencerede birleştirme işlemini tetikler.
         """
-        data_yolu = self.ui.txt_data_yolu.text()
-        event_yolu = self.ui.txt_event_yolu.text()
+        data_yolu = self.ui.txt_data_yolu.text().strip()
+        event_yolu = self.ui.txt_event_yolu.text().strip()
 
         if not data_yolu or not event_yolu:
-            QtWidgets.QMessageBox.warning(self, "Hata", "Lütfen hem Data hem de Event dosyasını seçiniz!")
+            QtWidgets.QMessageBox.warning(self, "Eksik Seçim", "Lütfen hem Data hem de Event dosyasını seçiniz!")
+            return
+
+        # Zaman aralığı (ms) ve frekans doğrulaması
+        if not oturum_dosyalarini_dogrula(self, data_yolu, event_yolu):
             return
 
         ana_pencere = self.parent()
@@ -2270,14 +2422,17 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.cmb_hataBloklari.currentIndexChanged.connect(self.hataKategoriDegisti)
 
         self.tum_hata_bloklari = {}
-        if not hasattr(self, 'hata_kategorileri'):
+        if not hasattr(self, 'hata_kategorileri') or not self.hata_kategorileri:
             self.hata_kategorileri = ["Hata_Durumu"]
 
+        haric_isimler = {'zaman_gorsel', 'zaman_index', 'zaman_gercek', 'time', 'motor_no', 'ayar_1', 'ayar_2', 'ayar_3'}
+
         for kategori in self.hata_kategorileri:
-            if kategori not in self.df.columns:
+            if kategori not in self.df.columns or str(kategori).lower() in haric_isimler:
                 continue
 
-            hatalar = self.df[kategori].values
+            # Sayısal olmayan (string / object) değerleri güvenle 0 ve 1 tamsayılarına dönüştür
+            hatalar = pd.to_numeric(self.df[kategori], errors='coerce').fillna(0).astype(np.int64).values
             padded = np.pad(hatalar, (1, 1), 'constant', constant_values=0)
             farklar = np.diff(padded)
             baslangicNoktalari = np.where(farklar == 1)[0]
@@ -3266,6 +3421,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 "Dosya Bulunamadı",
                 "Lütfen geçerli bir Data Log dosyası seçiniz."
             )
+            return
+
+        # Zaman aralığı (ms) ve frekans doğrulaması
+        if not oturum_dosyalarini_dogrula(self, data_yolu, event_yolu):
             return
 
         # Yükleme başladığında tablodaki tüm seçimleri sıfırla/temizle
