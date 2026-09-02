@@ -15,14 +15,13 @@
 import os
 import sys
 
+
 os.environ["QT_OPENGL"] = "angle"
 os.environ["QT_ANGLE_PLATFORM"] = "d3d11"
 
+
 import pyqtgraph as pg
 pg.setConfigOptions(useOpenGL=True, enableExperimental=False, antialias=False)
-
-
-
 
 
 # ===================================
