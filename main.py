@@ -12,11 +12,27 @@
 @version 2.0
 """
 
+import os
+import sys
+
+os.environ["QT_OPENGL"] = "angle"
+os.environ["QT_ANGLE_PLATFORM"] = "d3d11"
+
+import pyqtgraph as pg
+pg.setConfigOptions(useOpenGL=True, enableExperimental=False, antialias=False)
+
+
+
+
+
+# ===================================
+# YAZILIMSAL OPENGL (MESA3D) AYARI
+#os.environ["QT_OPENGL"] = "software"
+# ===================================
+
 # ==============================================================================
 # 1. STANDART KÜTÜPHANELER
 # ==============================================================================
-import os
-import sys
 import time
 import random
 import ctypes
@@ -37,7 +53,6 @@ import pyqtgraph as pg
 from pyqtgraph import mkPen
 from grafik_class import SensorGrafikKarti,  kareli_izgara_deseni_olustur, DashboardTuval
 
-pg.setConfigOptions(useOpenGL=True, enableExperimental=False, antialias=False)
 # ==============================================================================
 # 3. PYQT5 ARAYÜZ BİLEŞENLERİ
 # ==============================================================================
@@ -3060,19 +3075,48 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
     def baslangic_klasorunu_tara(self):
         """
-        @brief C++'tan gelen klasör argümanını veya varsayılan yolu algılar ve taratır.
+        @brief C++ / Terminalden gelen argümanı veya dinamik çalışma dizinini tarar.
         """
-        # 1. C++'tan veya terminalden bir yol gönderildi mi?
-        if len(sys.argv) > 1 and os.path.exists(sys.argv[1]) and os.path.isdir(sys.argv[1]):
-            hedef_klasor = sys.argv[1]
-        # 2. Gönderilmediyse varsayılan klasörlere bak:
-        elif os.path.exists(r"C:\kayıtlar"):
-            hedef_klasor = r"C:\kayıtlar"
-        elif os.path.exists(r"C:\kayitlar"):
-            hedef_klasor = r"C:\kayitlar"
-        else:
-            # Geliştirme ortamı / geçerli klasör
-            hedef_klasor = os.path.dirname(os.path.abspath(__file__))
+        hedef_klasor = None
+
+        # 1. C++ veya Şirket Başlatıcısından (sys.argv) gelen yol:
+        if len(sys.argv) > 1 and sys.argv[1]:
+            gelen_arg = os.path.normpath(sys.argv[1].strip('\'"'))
+            if os.path.exists(gelen_arg):
+                if os.path.isdir(gelen_arg):
+                    hedef_klasor = os.path.abspath(gelen_arg)
+                elif os.path.isfile(gelen_arg):
+                    hedef_klasor = os.path.dirname(os.path.abspath(gelen_arg))
+
+        # 2. Argüman gelmediyse şirket standart yollarını ve dinamik dizinleri tara:
+        if not hedef_klasor:
+            mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
+            if getattr(sys, 'frozen', False):
+                mevcut_dizin = os.path.dirname(sys.executable)
+
+            def csv_var_mi(klasor):
+                if not os.path.exists(klasor) or not os.path.isdir(klasor):
+                    return False
+                return any(f.lower().endswith('.csv') for f in os.listdir(klasor) if os.path.isfile(os.path.join(klasor, f)))
+
+            olasi_dizinler = [
+                r"C:\kayıtlar",
+                r"C:\kayitlar",
+                r"D:\kayıtlar",
+                r"D:\kayitlar",
+                mevcut_dizin,
+                os.path.abspath(os.path.join(mevcut_dizin, "..")),
+                os.path.abspath(os.path.join(mevcut_dizin, "..", "..")),
+                os.getcwd()
+            ]
+
+            for d in olasi_dizinler:
+                if csv_var_mi(d):
+                    hedef_klasor = d
+                    break
+
+            if not hedef_klasor:
+                hedef_klasor = mevcut_dizin
 
         self.klasoru_tara_ve_listele(hedef_klasor)
 
@@ -3240,24 +3284,33 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         json_yolu = None
 
         # 1. C++'tan bir argüman (sys.argv) geldi mi?
-        if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-            gelen_yol = sys.argv[1]
-
-            # Eğer C++ bir klasör yolu gönderdiyse (Örn: "C:/kayıtlar"):
-            if os.path.isdir(gelen_yol):
-                aday_json = os.path.join(gelen_yol, "parameters.json")
-                if os.path.exists(aday_json):
-                    json_yolu = aday_json
-            # Eğer C++ doğrudan .json dosyasını gönderdiyse:
-            elif gelen_yol.lower().endswith(".json"):
-                json_yolu = gelen_yol
+        if len(sys.argv) > 1 and sys.argv[1]:
+            gelen_yol = os.path.normpath(sys.argv[1].strip('\'"'))
+            if os.path.exists(gelen_yol):
+                # Eğer C++ bir klasör yolu gönderdiyse (Örn: "C:/kayıtlar"):
+                if os.path.isdir(gelen_yol):
+                    aday_json = os.path.join(gelen_yol, "parameters.json")
+                    if os.path.exists(aday_json):
+                        json_yolu = aday_json
+                # Eğer C++ doğrudan .json dosyasını gönderdiyse:
+                elif gelen_yol.lower().endswith(".json"):
+                    json_yolu = gelen_yol
 
         # 2. C++ bir şey göndermediyse varsayılan yerlere bak (Fallback):
         if not json_yolu:
+            mevcut_dizin = os.path.dirname(os.path.abspath(__file__))
+            if getattr(sys, 'frozen', False):
+                mevcut_dizin = os.path.dirname(sys.executable)
+
             olasi_yollar = [
                 r"C:\kayıtlar\parameters.json",
                 r"C:\kayitlar\parameters.json",
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "parameters.json")
+                r"D:\kayıtlar\parameters.json",
+                r"D:\kayitlar\parameters.json",
+                kaynak_yolu("parameters.json"),
+                os.path.join(mevcut_dizin, "parameters.json"),
+                os.path.join(os.getcwd(), "parameters.json"),
+                os.path.abspath(os.path.join(mevcut_dizin, "..", "parameters.json"))
             ]
             for yol in olasi_yollar:
                 if os.path.exists(yol):
@@ -3419,13 +3472,16 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         # 1. Öncelikli aday dosya yollarını tara (Proje klasörü & PyInstaller MEIPASS uyumlu)
         aday_yollar = [
+            kaynak_yolu("Fadec Kullanım Kılavuzu.pdf"),
+            kaynak_yolu("Fadec Kullanim Kilavuzu.pdf"),
             kaynak_yolu("Fadec Dökümantasyon.pdf"),
             kaynak_yolu("Fadec Dokumantasyon.pdf"),
             kaynak_yolu("Kullanim_Kilavuzu.pdf"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "Fadec Kullanım Kılavuzu.pdf"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "Fadec Dökümantasyon.pdf"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "Fadec Dokumantasyon.pdf"),
+            os.path.join(os.path.expanduser("~"), "Desktop", "Fadec Kullanım Kılavuzu.pdf"),
             os.path.join(os.path.expanduser("~"), "Desktop", "Fadec Dökümantasyon.pdf"),
-            os.path.join(os.path.expanduser("~"), "Desktop", "Fadec Dokumantasyon.pdf"),
         ]
 
         hedef_pdf = None
@@ -3827,6 +3883,8 @@ if __name__ == "__main__":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("fadec.telemetry.analyzer.1.0")
     except Exception:
         pass
+
+    #QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseSoftwareOpenGL)
 
     app = QApplication(sys.argv)
     app.setStyleSheet(KOYU_TEMA_QSS)
