@@ -3115,7 +3115,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.pencere_yukleme.close()
         QtWidgets.QMessageBox.critical(self, "Yükleme Hatası", f"Veriler yüklenirken bir hata oluştu:\n{hata_metni}")
 
-    def AyarlariAc(self):
+    def AyarlariAc(self): # Hata Ayıklama kısmındaki Limit penceresinden bahsediyoruz.
         """
         @brief Limit ayarları penceresini açar ve uygulanan seçimlere göre limit çizgilerini günceller.
         """
@@ -4615,95 +4615,132 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             QtWidgets.QMessageBox.information(self, "Sensör Bulunamadı", "Görüntülenebilecek uygun bir sensör kolonu bulunamadı.")
             return
 
-        # Sensör Seçim Açılır Kutusu (QInputDialog - Türkçe Butonlar)
-        dialog = QtWidgets.QInputDialog(self)
-        dialog.setWindowTitle("Grafik Ekle")
-        dialog.setLabelText("Görüntülemek istediğiniz sensörü seçiniz:")
-        dialog.setComboBoxItems(sensor_listesi)
-        dialog.setComboBoxEditable(True)
-        
-        combo = dialog.findChild(QtWidgets.QComboBox)
-        if combo:
-            combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-            combo.setMinimumHeight(38)
-            
-            if combo.lineEdit():
-                combo.lineEdit().setPlaceholderText("Sensör Ara ...")
-                combo.lineEdit().setStyleSheet("""
-                    QLineEdit {
-                        background-color: transparent;
-                        color: #ffffff;
-                        border: none;
-                        font-size: 11pt;
-                        font-weight: bold;
-                        padding: 0px 8px;
-                    }
+        class CustomEkleDialog(QtWidgets.QDialog):
+            def __init__(self, parent=None, sensorler=None, tema="dark"):
+                super().__init__(parent)
+                self.setWindowTitle("Grafik Ekle")
+                self.setFixedSize(450, 220)
+                
+                # Temaya göre renk ayarı
+                bg_color = "#ffffff" if tema == "light" else "#1e1e24"
+                text_color = "#0f172a" if tema == "light" else "#ffffff"
+                combo_bg = "#f1f5f9" if tema == "light" else "#2b2b36"
+                border_color = "#cbd5e1" if tema == "light" else "#444"
+                
+                self.setStyleSheet(f"""
+                    QDialog {{ background-color: {bg_color}; color: {text_color}; }}
+                    QLabel {{ font-size: 11pt; color: {text_color}; }}
+                    QComboBox {{ background-color: {combo_bg}; color: {text_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 5px; font-size: 11pt; }}
+                    QPushButton {{ background-color: #0284c7; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; }}
+                    QPushButton:hover {{ background-color: #0369a1; }}
+                    QPushButton#btnIptal {{ background-color: #ef4444; }}
+                    QPushButton#btnIptal:hover {{ background-color: #dc2626; }}
                 """)
                 
-            completer = QtWidgets.QCompleter(sensor_listesi, combo)
-            completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
-            completer.setFilterMode(QtCore.Qt.MatchContains)
-            completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
-            combo.setCompleter(completer)
-            
-            popup_stili = """
-                QListView {
-                    background-color: #222226;
-                    color: #ffffff;
-                    border: 1.5px solid #00ffcc;
-                    border-radius: 6px;
-                    padding: 4px;
-                    font-family: 'Segoe UI', Arial;
-                    font-size: 11pt;
-                    outline: none;
-                }
-                QListView::item {
-                    padding: 2px 10px;
-                    border-radius: 4px;
-                    color: #ffffff;
-                }
-                QListView::item:hover, QListView::item:selected {
-                    background-color: #2e2e38;
-                    color: #00ffcc;
-                }
-            """
-            
-            if completer.popup():
-                completer.popup().setItemDelegate(CompleterItemDelegate(completer.popup(), 34))
-                completer.popup().setStyleSheet(popup_stili)
+                layout = QtWidgets.QVBoxLayout(self)
+                form = QtWidgets.QFormLayout()
+                form.setVerticalSpacing(15)
                 
-            if combo.view():
-                combo.view().setItemDelegate(CompleterItemDelegate(combo.view(), 34))
-                combo.view().setStyleSheet(popup_stili)
+                self.cmb_tip = QtWidgets.QComboBox()
+                self.cmb_tip.addItems(["Çizgi Grafiği (Line Plot)", "Dağılım Grafiği (Scatter Plot)"])
+                form.addRow("Grafik Tipi:", self.cmb_tip)
                 
-            # İlk açıldığında metnin seçili (highlight) gelmemesi ve arama placeholder'ının görünmesi için
-            combo.setCurrentIndex(-1)
+                self.cmb_y = QtWidgets.QComboBox()
+                self.cmb_y.addItems(sensorler)
+                form.addRow("Y Ekseni (Sensör):", self.cmb_y)
+                
+                self.cmb_x = QtWidgets.QComboBox()
+                self.cmb_x.addItems(sensorler)
+                self.lbl_x = QtWidgets.QLabel("X Ekseni (Sensör):")
+                form.addRow(self.lbl_x, self.cmb_x)
 
-        dialog.setOkButtonText("Oluştur")
-        dialog.setCancelButtonText("Vazgeç")
-        
-        ok = (dialog.exec_() == QtWidgets.QDialog.Accepted)
-        secilen_sensor = dialog.textValue()
-        if not ok or not secilen_sensor:
+                def setup_search(combo, placeholder="Sensör Ara..."):
+                    combo.setEditable(True)
+                    combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+                    combo.lineEdit().setPlaceholderText(placeholder)
+                    combo.lineEdit().setStyleSheet(f"background-color: transparent; color: {text_color}; border: none;")
+                    
+                    completer = QtWidgets.QCompleter(sensorler, combo)
+                    completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+                    completer.setFilterMode(QtCore.Qt.MatchContains)
+                    completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+                    combo.setCompleter(completer)
+                    
+                    popup_stili = f"""
+                        QListView {{
+                            background-color: {combo_bg};
+                            color: {text_color};
+                            border: 1px solid {border_color};
+                            border-radius: 4px;
+                            outline: none;
+                        }}
+                        QListView::item:hover, QListView::item:selected {{
+                            background-color: #0284c7;
+                            color: white;
+                        }}
+                    """
+                    if completer.popup():
+                        completer.popup().setItemDelegate(CompleterItemDelegate(completer.popup(), 30))
+                        completer.popup().setStyleSheet(popup_stili)
+                    if combo.view():
+                        combo.view().setItemDelegate(CompleterItemDelegate(combo.view(), 30))
+                        combo.view().setStyleSheet(popup_stili)
+                        
+                    combo.setCurrentIndex(-1)
+
+                setup_search(self.cmb_y, "Y Ekseni için Sensör Ara...")
+                setup_search(self.cmb_x, "X Ekseni için Sensör Ara...")
+                
+                layout.addLayout(form)
+                layout.addStretch()
+                
+                btn_layout = QtWidgets.QHBoxLayout()
+                self.btn_ok = QtWidgets.QPushButton("Oluştur")
+                self.btn_iptal = QtWidgets.QPushButton("İptal")
+                self.btn_iptal.setObjectName("btnIptal")
+                btn_layout.addStretch()
+                btn_layout.addWidget(self.btn_ok)
+                btn_layout.addWidget(self.btn_iptal)
+                layout.addLayout(btn_layout)
+                
+                self.cmb_x.hide()
+                self.lbl_x.hide()
+                
+                self.cmb_tip.currentIndexChanged.connect(self.tip_degisti)
+                self.btn_ok.clicked.connect(self.accept)
+                self.btn_iptal.clicked.connect(self.reject)
+                
+            def tip_degisti(self, idx):
+                if idx == 1:
+                    self.cmb_x.show()
+                    self.lbl_x.show()
+                else:
+                    self.cmb_x.hide()
+                    self.lbl_x.hide()
+
+        dialog = CustomEkleDialog(self, sensor_listesi, getattr(self, 'aktif_tema', 'dark'))
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
             return
-
-        # Limitleri ve rengi belirle
+            
+        grafik_tipi = "scatter" if dialog.cmb_tip.currentIndex() == 1 else "line"
+        secilen_y = dialog.cmb_y.currentText()
+        secilen_x = dialog.cmb_x.currentText() if grafik_tipi == "scatter" else None
+        
         limit_sozlugu = getattr(self, 'LIMITLER', {})
-        limitler = limit_sozlugu.get(secilen_sensor, None)
-        renk = self.sensor_rengi_getir(secilen_sensor)
+        limitler = limit_sozlugu.get(secilen_y, None)
+        renk = self.sensor_rengi_getir(secilen_y)
 
-        # Yeni Grafik Kartını Üret (C#'taki: new SensorGrafikKarti)
-        # Yeni Grafik Kartını doğrudan Tuval'in (dashboard_container) içine üret
         kart = SensorGrafikKarti(
-            sensor_adi=secilen_sensor,
+            sensor_adi=secilen_y,
             df=self.df,
             parent=self.dashboard_container,
             limitler=limitler,
             cizgi_rengi=renk,
-            tema=self.aktif_tema
+            tema=self.aktif_tema,
+            grafik_tipi=grafik_tipi,
+            x_sensor_adi=secilen_x
         )
 
-        # Kartı 25px ızgaraya uygun başlangıç koordinatına yerleştir
         mevcut_kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
         idx = len(mevcut_kartlar) - 1
         offset = (idx * 50) % 300

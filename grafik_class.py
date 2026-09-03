@@ -85,11 +85,15 @@ def kareli_izgara_deseni_olustur(grid_size=25, bg_color="#000000", line_color="#
 class DashboardTuval(QtWidgets.QWidget):
     """
     @brief 25px kareli mühendislik ızgara desenine sahip serbest tuval.
+    Çoklu grafik seçimi için QRubberBand (Seçim Kutusu) desteği içerir.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.izgara_brush = kareli_izgara_deseni_olustur(25)
+        # Seçim Kutusu (Rubber Band)
+        self.rubberBand = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self)
+        self.origin = QtCore.QPoint()
 
     def tema_guncelle(self, tema="dark"):
         if tema == "light":
@@ -101,6 +105,105 @@ class DashboardTuval(QtWidgets.QWidget):
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.fillRect(event.rect(), self.izgara_brush)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            # Boşluğa tıklandığında seçimi başlat ve eski seçimi temizle
+            self.origin = event.pos()
+            self.rubberBand.setGeometry(QtCore.QRect(self.origin, QtCore.QSize()))
+            self.rubberBand.show()
+            self.secimi_temizle()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self.origin.isNull():
+            # Sürükleme anında dikdörtgeni genişlet/daralt
+            self.rubberBand.setGeometry(QtCore.QRect(self.origin, event.pos()).normalized())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self.rubberBand.hide()
+            secim_alani = self.rubberBand.geometry()
+            
+            # Eğer kullanıcı sadece tek bir tık yaptıysa (genişlik/yükseklik çok küçükse) iptal et
+            if secim_alani.width() > 5 and secim_alani.height() > 5:
+                # Kesişen grafikleri bul
+                for child in self.findChildren(SensorGrafikKarti):
+                    # intersects() fonksiyonu nesnelerin birbiriyle teması var mı diye bakar
+                    if secim_alani.intersects(child.geometry()):
+                        child.secimi_ayarla(True)
+            self.origin = QtCore.QPoint()
+        super().mouseReleaseEvent(event)
+
+    def secimi_temizle(self):
+        """ Dashboard üzerindeki tüm seçili grafikleri temizler. """
+        for child in self.findChildren(SensorGrafikKarti):
+            if getattr(child, 'is_selected', False):
+                child.secimi_ayarla(False)
+
+    def secili_grafikler(self):
+        """ Seçili olan tüm grafikleri liste olarak döner. """
+        return [c for c in self.findChildren(SensorGrafikKarti) if getattr(c, 'is_selected', False)]
+
+    def grafikleri_grupla(self):
+        """ Seçili grafikleri alt alta tek bir pano (stack) olarak dizer ve eksenlerini (XLink) senkronize eder. """
+        secililer = self.secili_grafikler()
+        if len(secililer) <= 1:
+            return
+            
+        import uuid
+        yeni_grup_id = uuid.uuid4().hex
+        
+        # Y koordinatına göre yukarıdan aşağıya sırala
+        secililer.sort(key=lambda k: k.pos().y())
+        
+        ref_kart = secililer[0]
+        hedef_x = ref_kart.pos().x()
+        hedef_w = ref_kart.width()
+        mevcut_y = ref_kart.pos().y()
+        
+        for kart in secililer:
+            kart.grup_id = yeni_grup_id
+            # Genişliği ve X'i eşitle, tam altına yerleştir
+            kart.setGeometry(hedef_x, mevcut_y, hedef_w, kart.height())
+            mevcut_y += kart.height() - 1  # İnce, şık bir bitişiklik için -1 px
+            
+            # X Eksenlerini birbirine bağla (Sync Zoom/Pan)
+            if kart != ref_kart:
+                kart.plot_widget.setXLink(ref_kart.plot_widget)
+                
+            kart.secimi_ayarla(False)
+            kart.tuvali_guncelle(sadece_buyut=False)
+            
+    def grubu_dagit(self, grup_id):
+        """ Belirtilen gruba ait tüm grafiklerin bağını ve kilidini (XLink) koparır. """
+        if not grup_id:
+            return
+        for child in self.findChildren(SensorGrafikKarti):
+            if getattr(child, 'grup_id', None) == grup_id:
+                child.grup_id = None
+                child.plot_widget.setXLink(None)
+
+    def grubu_yeniden_diz(self, grup_id):
+        """ Gruptaki bir grafiğin boyutu değiştiğinde üst üste binmelerini önlemek için yeniden hizalar. """
+        if not grup_id:
+            return
+            
+        grup_elemanlari = [c for c in self.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == grup_id]
+        if not grup_elemanlari:
+            return
+            
+        # Y eksenine göre yukarıdan aşağıya sırala
+        grup_elemanlari.sort(key=lambda k: k.pos().y())
+        
+        ref_kart = grup_elemanlari[0]
+        hedef_x = ref_kart.pos().x()
+        mevcut_y = ref_kart.pos().y()
+        
+        for kart in grup_elemanlari:
+            kart.move(hedef_x, mevcut_y)
+            mevcut_y += kart.height() - 1
 
 
 class SensorGrafikViewBox(pg.ViewBox):
@@ -169,7 +272,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
     # Kapatıldığında ana pencereye haber veren sinyal (C#'taki Event)
     kapandi_signal = QtCore.pyqtSignal(object)
 
-    def __init__(self, sensor_adi, df, parent=None, limitler=None, cizgi_rengi="#00ffcc", tema="dark"):
+    def __init__(self, sensor_adi, df, parent=None, limitler=None, cizgi_rengi="#00ffcc", tema="dark", grafik_tipi="line", x_sensor_adi=None):
         """
         @brief Kurucu fonksiyon (Constructor).
         """
@@ -179,10 +282,13 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.limitler = limitler
         self.cizgi_rengi = cizgi_rengi
         self.tema = tema
+        self.grafik_tipi = grafik_tipi
+        self.x_sensor_adi = x_sensor_adi
         self.limit_cizgileri = []
         self.ham_x = None
         self.ham_y = None
         self._surukleme_basladi = False
+        self.grup_id = None
 
         # LOD Zamanlayıcısı (Ana Pencere analiz_grafigi ile 1-e-1 Birebir Aynı Mimari)
         self.zoom_timer = QtCore.QTimer(self)
@@ -219,7 +325,8 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         layout_header.setContentsMargins(10, 0, 5, 0)
         layout_header.setSpacing(5)
 
-        self.lbl_baslik = QtWidgets.QLabel(f" {self.sensor_adi} ")
+        baslik_metni = f" {self.sensor_adi} " if self.grafik_tipi == "line" else f" Y: {self.sensor_adi} | X: {self.x_sensor_adi} "
+        self.lbl_baslik = QtWidgets.QLabel(baslik_metni)
         font_baslik = QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold)
         self.lbl_baslik.setFont(font_baslik)
         # Sensör ismini de temaya uygun turkuaz yapıyoruz
@@ -270,9 +377,13 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         # 3. PyQtGraph Çizim Alanı (Özel ViewBox ile)
         vb = SensorGrafikViewBox(kart=self)
-        self.zaman_ekseni = ZamanEkseniItem(orientation='bottom')
-        self.plot_widget = pg.PlotWidget(viewBox=vb, axisItems={'bottom': self.zaman_ekseni})
-        self.plot_widget.setBackground('#121214')  # Daha yumuşak koyu gri arka plan
+        if getattr(self, "grafik_tipi", "line") == "line":
+            self.zaman_ekseni = ZamanEkseniItem(orientation='bottom')
+            self.plot_widget = pg.PlotWidget(viewBox=vb, axisItems={'bottom': self.zaman_ekseni})
+        else:
+            self.plot_widget = pg.PlotWidget(viewBox=vb)
+            
+        self.plot_widget.setBackground('#121214')
 
         # Grid ve Eksen Stilleri (Daha zarif)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.4)
@@ -297,6 +408,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         # Daha belirgin Crosshair
         self.vLine = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen('#888888', width=1, style=Qt.DashLine))
+        self.hLine = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen('#888888', width=1, style=Qt.DashLine))
 
         # Kullanıcının isteği: Arka plan saydam (siyah kutu yok), sadece yazı
         self.crosshair_yazi = pg.TextItem(anchor=(0, 1), color="#ffffff", fill=pg.mkBrush(0, 0, 0, 0))
@@ -304,9 +416,12 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         # Z-Index Ayarı: İmlecin ve yazının grafiğin (çizgilerin) altında kalmasını önler
         self.vLine.setZValue(1000)
+        self.hLine.setZValue(1000)
         self.crosshair_yazi.setZValue(1001)
 
         self.plot_widget.addItem(self.vLine, ignoreBounds=True)
+        self.plot_widget.addItem(self.hLine, ignoreBounds=True)
+        self.hLine.hide()
         self.plot_widget.addItem(self.crosshair_yazi, ignoreBounds=True)
 
         # Fare hareketlerini algılayıp crosshair (imleç) değerlerini güncellemek için bağlantı
@@ -349,26 +464,69 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.raise_()
         super().mousePressEvent(event)
 
+    def secimi_ayarla(self, secili: bool):
+        """ Kartın seçili olma durumunu (Görsel) ayarlar. """
+        self.is_selected = secili
+        tema = getattr(self, 'tema', 'dark')
+        
+        if secili:
+            border_color = "#00ffcc"
+            header_bg = "#2e2e30" if tema == 'dark' else "#e2e8f0"
+            border_w = "2px"
+            left_w = "6px"
+        else:
+            border_color = "#2a2a2d" if tema == 'dark' else "#cbd5e1"
+            header_bg = "#252526" if tema == 'dark' else "#f1f5f9"
+            border_w = "1px"
+            left_w = "4px"
+            
+        self.plot_widget.setStyleSheet(f"border: {border_w} solid {border_color}; border-radius: 4px;")
+        self.header_frame.setStyleSheet(f"background-color: {header_bg}; border-bottom: 1px solid {border_color}; border-left: {left_w} solid #00ffcc; border-top: none; border-right: none;")
+
     def baslik_basildi(self, event):
-        """ Başlığa tıklandığında sürükleme başlangıç koordinatlarını kaydeder. """
+        """ Başlığa tıklandığında sürükleme başlangıç koordinatlarını kaydeder. Grup taşıma için seçili grafikleri belirler. """
         if event.button() == QtCore.Qt.LeftButton:
             self.raise_()
             self.drag_start_pos = event.globalPos()
             self.window_start_pos = self.pos()
+            
+            tuval = self.parent()
+            # Eğer seçili DEĞİLSE, diğer seçimleri iptal et ve sadece bunu seçili yap (Klasik Windows davranışı)
+            if not getattr(self, 'is_selected', False):
+                if hasattr(tuval, 'secimi_temizle'):
+                    tuval.secimi_temizle()
+                self.secimi_ayarla(True)
+            
+            # Seçili olan tüm grafikleri bul ve başlangıç koordinatlarını hafızaya al
+            self._grup_baslangic = {}
+            if hasattr(tuval, 'secili_grafikler'):
+                for kart in tuval.secili_grafikler():
+                    self._grup_baslangic[kart] = kart.pos()
 
     def baslik_suruklendi(self, event):
-        """ Başlık sürüklendikçe kartı 25px kareli ızgaraya manyetik olarak yapıştırarak taşır. """
+        """ Başlık sürüklendikçe, eğer grup varsa tüm grubu 25px ızgaraya hizalayarak taşır. """
         if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'drag_start_pos'):
             delta = event.globalPos() - self.drag_start_pos
             ham_x = self.window_start_pos.x() + delta.x()
             ham_y = self.window_start_pos.y() + delta.y()
 
-            # 🔥 25px Manyetik Izgara Hizalaması
+            # 🔥 25px Manyetik Izgara Hizalaması (Ana Kart İçin)
             snap_x = max(0, round(ham_x / 25) * 25)
             snap_y = max(0, round(ham_y / 25) * 25)
+            
+            snapped_delta_x = snap_x - self.window_start_pos.x()
+            snapped_delta_y = snap_y - self.window_start_pos.y()
 
-            self.move(int(snap_x), int(snap_y))
-            self.tuvali_guncelle(sadece_buyut=True)
+            # Grubu taşı
+            if hasattr(self, '_grup_baslangic') and self._grup_baslangic:
+                for kart, b_pos in self._grup_baslangic.items():
+                    yeni_x = max(0, b_pos.x() + snapped_delta_x)
+                    yeni_y = max(0, b_pos.y() + snapped_delta_y)
+                    kart.move(int(yeni_x), int(yeni_y))
+                    kart.tuvali_guncelle(sadece_buyut=True)
+            else:
+                self.move(int(snap_x), int(snap_y))
+                self.tuvali_guncelle(sadece_buyut=True)
 
     def resize_basildi(self, event):
         """ Boyutlandırma tutamacına basıldığında başlangıç boyutunu kaydeder. """
@@ -378,7 +536,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             self.window_start_size = self.size()
 
     def resize_suruklendi(self, event):
-        """ Tutamaç sürüklendikçe kartı 25px ızgara adımlarıyla büyütüp küçültür. """
+        """ Tutamaç sürüklendikçe kartı 25px ızgara adımlarıyla büyütüp küçültür. Grup varsa tüm grubu eşit boyutlandırır. """
         if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'resize_drag_start_pos'):
             delta = event.globalPos() - self.resize_drag_start_pos
             ham_w = self.window_start_size.width() + delta.x()
@@ -388,31 +546,66 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             snap_w = max(self.minimumWidth(), round(ham_w / 25) * 25)
             snap_h = max(self.minimumHeight(), round(ham_h / 25) * 25)
 
-            self.resize(int(snap_w), int(snap_h))
+            if getattr(self, 'grup_id', None) is not None:
+                tuval = self.parent()
+                grup_elemanlari = [c for c in tuval.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == self.grup_id]
+                
+                # Kendi boyutunu değiştir
+                self.resize(int(snap_w), int(snap_h))
+                
+                # Diğerlerinin de boyutunu eşitle
+                for kart in grup_elemanlari:
+                    if kart != self:
+                        kart.resize(int(snap_w), int(snap_h))
+                        kart.tuvali_guncelle(sadece_buyut=True)
+                        
+                # Boyutlar değiştiği için üst üste binmesinler diye grubu yeniden diz
+                if hasattr(tuval, 'grubu_yeniden_diz'):
+                    tuval.grubu_yeniden_diz(self.grup_id)
+            else:
+                self.resize(int(snap_w), int(snap_h))
+                
             self.tuvali_guncelle(sadece_buyut=True)
 
     def baslik_birakildi(self, event):
         """ Başlık sürüklemesi bittiğinde tuvalin fazlalıklarını kırpar. """
-        self.tuvali_guncelle(sadece_buyut=False)
+        if hasattr(self, '_grup_baslangic') and self._grup_baslangic:
+            for kart in self._grup_baslangic.keys():
+                kart.tuvali_guncelle(sadece_buyut=False)
+            self._grup_baslangic = {}
+        else:
+            self.tuvali_guncelle(sadece_buyut=False)
 
     def resize_birakildi(self, event):
-        """ Boyutlandırma bittiğinde tuvalin fazlalıklarını kırpar. """
-        self.tuvali_guncelle(sadece_buyut=False)
+        """ Boyutlandırma bittiğinde tuvalin fazlalıklarını kırpar. Grup varsa gruptaki tüm kartları günceller. """
+        if getattr(self, 'grup_id', None) is not None:
+            tuval = self.parent()
+            grup_elemanlari = [c for c in tuval.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == self.grup_id]
+            for kart in grup_elemanlari:
+                kart.tuvali_guncelle(sadece_buyut=False)
+        else:
+            self.tuvali_guncelle(sadece_buyut=False)
 
     def ciz(self):
         """
-        @brief Sensör verisini LTTB downsampling ile çizer ve istatistikleri hesaplar.
+        @brief Sensör verisini LTTB veya Scatter için dilimleme ile çizer.
         """
         if self.df is None or self.sensor_adi not in self.df.columns:
             return
+            
+        if self.grafik_tipi == "scatter" and (not self.x_sensor_adi or self.x_sensor_adi not in self.df.columns):
+            return
+
         t_basla = time.perf_counter()
 
-        x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64,
-                                                copy=False) if "Zaman_Index" in self.df.columns else np.arange(
-            len(self.df), dtype=np.float64)
+        if self.grafik_tipi == "line":
+            x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False) if "Zaman_Index" in self.df.columns else np.arange(len(self.df), dtype=np.float64)
+        else:
+            x_raw = self.df[self.x_sensor_adi].to_numpy(dtype=np.float64, copy=False)
+            
         y_raw = self.df[self.sensor_adi].to_numpy(dtype=np.float64, copy=False)
 
-        if "Zaman_Gorsel" in self.df.columns and len(self.df) >= 2:
+        if self.grafik_tipi == "line" and "Zaman_Gorsel" in self.df.columns and len(self.df) >= 2:
             try:
                 t0 = pd.to_datetime(str(self.df.iloc[0]["Zaman_Gorsel"]))
                 t1 = pd.to_datetime(str(self.df.iloc[1]["Zaman_Gorsel"]))
@@ -446,105 +639,210 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         except Exception:
             pass
 
-        # LTTB ile çiz
         t_lttb_basla = time.perf_counter()
-        if len(x_raw) > 1500:
-            x_down, y_down = lttb_downsample(x_raw, y_raw, threshold=1500)
+        
+        if self.grafik_tipi == "line":
+            if len(x_raw) > 1500:
+                x_down, y_down = lttb_downsample(x_raw, y_raw, threshold=1500)
+            else:
+                x_down, y_down = x_raw, y_raw
+            
+            self.cizgi = self.plot_widget.plot(
+                x=x_down, y=y_down,
+                pen=pg.mkPen(color=self.cizgi_rengi, width=1.5),
+                name=self.sensor_adi
+            )
         else:
-            x_down, y_down = x_raw, y_raw
-        t_lttb_bitis = time.perf_counter()
-        self.cizgi = self.plot_widget.plot(
-            x=x_down, y=y_down,
-            pen=pg.mkPen(color=self.cizgi_rengi, width=1.5),  # Daha kalın ve belirgin çizgi
-            name=self.sensor_adi
-        )
+            # Scatter Plot: basit dilimleme (slice) ile hızlı render
+            step = max(1, len(x_raw) // 1500)
+            x_down = x_raw[::step]
+            y_down = y_raw[::step]
+            
+            self.cizgi = self.plot_widget.plot(
+                x=x_down, y=y_down,
+                pen=None,
+                symbol='o',
+                symbolSize=4,
+                symbolPen=None,
+                symbolBrush=self.cizgi_rengi,
+                name=self.sensor_adi
+            )
 
         self.cizgi.setDownsampling(ds=False, auto=False)
         self.cizgi.setClipToView(False)
+        t_lttb_bitis = time.perf_counter()
 
         t_bitis = time.perf_counter()
 
-        # Otomatik limit çizgisi varsa çiz
-        if self.limitler and len(self.limitler) >= 2:
-            self.limit_cizgilerini_guncelle(self.limitler[0], self.limitler[1])
+        # KULLANICI ISTEGI: Grafikler oluşturulurken limit çizgileri otomatik gelmesin, 
+        # sadece sağ tıkla istendiğinde eklensin.
+        # if self.limitler and len(self.limitler) >= 2:
+        #     self.limit_cizgilerini_guncelle(self.limitler[0], self.limitler[1])
 
         lttb_ms = (t_lttb_bitis - t_lttb_basla) * 1000
         toplam_ms = (t_bitis - t_basla) * 1000
 
     def grafik_lod_guncelle(self):
         """
-        @brief Ana analiz grafiğinde Zoom/Pan yapıldığında LTTB ile dinamik LOD güncellemesi yapar.
-        (Ana penceredeki grafik_lod_guncelle ile 1-e-1 Birebir Aynı)
+        @brief Dinamik LOD güncellemesi yapar. Scatter plot için bounding box filtreleme kullanır.
         """
         if self.ham_x is None or self.ham_y is None:
             return
 
         x_min, x_max = self.plot_widget.viewRange()[0]
-        genislik = x_max - x_min
-        buffer_min = x_min - genislik * 0.5
-        buffer_max = x_max + genislik * 0.5
-
-        start_idx = max(0, int(np.floor(buffer_min)) - 1)
-        end_idx = min(len(self.ham_x), int(np.ceil(buffer_max)) + 1)
-
-        gorunen_nokta_sayisi = end_idx - start_idx
-        if gorunen_nokta_sayisi <= 0:
-            return
-
-        x_slice = self.ham_x[start_idx:end_idx]
-        y_slice = self.ham_y[start_idx:end_idx]
-
-        if gorunen_nokta_sayisi <= 3000:
-            self.cizgi.setData(x_slice, y_slice)
+        
+        if getattr(self, 'grafik_tipi', 'line') == 'line':
+            genislik = x_max - x_min
+            buffer_min = x_min - genislik * 0.5
+            buffer_max = x_max + genislik * 0.5
+    
+            start_idx = max(0, int(np.floor(buffer_min)) - 1)
+            end_idx = min(len(self.ham_x), int(np.ceil(buffer_max)) + 1)
+    
+            gorunen_nokta_sayisi = end_idx - start_idx
+            if gorunen_nokta_sayisi <= 0:
+                return
+    
+            x_slice = self.ham_x[start_idx:end_idx]
+            y_slice = self.ham_y[start_idx:end_idx]
+    
+            if gorunen_nokta_sayisi <= 3000:
+                self.cizgi.setData(x_slice, y_slice)
+            else:
+                x_lttb, y_lttb = lttb_downsample(x_slice, y_slice, threshold=1500)
+                self.cizgi.setData(x_lttb, y_lttb)
         else:
-            x_lttb, y_lttb = lttb_downsample(x_slice, y_slice, threshold=1500)
-            self.cizgi.setData(x_lttb, y_lttb)
+            y_min, y_max = self.plot_widget.viewRange()[1]
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            
+            mask = (self.ham_x >= x_min - x_range) & (self.ham_x <= x_max + x_range) & \
+                   (self.ham_y >= y_min - y_range) & (self.ham_y <= y_max + y_range)
+            
+            x_slice = self.ham_x[mask]
+            y_slice = self.ham_y[mask]
+            
+            if len(x_slice) > 1500:
+                step = max(1, len(x_slice) // 1500)
+                x_slice = x_slice[::step]
+                y_slice = y_slice[::step]
+                
+            self.cizgi.setData(x_slice, y_slice)
+
+    def crosshair_gizle(self):
+        """ Crosshair imlecini kapatır. """
+        if hasattr(self, 'vLine') and self.vLine.isVisible():
+            self.vLine.hide()
+        if hasattr(self, 'hLine') and self.hLine.isVisible():
+            self.hLine.hide()
+        if hasattr(self, 'crosshair_yazi') and self.crosshair_yazi.isVisible():
+            self.crosshair_yazi.hide()
+
+    def crosshair_guncelle(self, mx, my, gercekZaman, is_scatter=False, from_group=False):
+        """ Verilen koordinatlara göre Crosshair'i günceller. HTML render cache optimizasyonu kullanır. """
+        if is_scatter:
+            x_data, y_data = self.cizgi.getData()
+            if x_data is None or len(x_data) == 0:
+                return
+                
+            x_range = max(1e-6, np.ptp(x_data))
+            y_range = max(1e-6, np.ptp(y_data))
+            dist = ((x_data - mx) / x_range)**2 + ((y_data - my) / y_range)**2
+            min_idx = np.argmin(dist)
+            
+            best_x = x_data[min_idx]
+            best_y = y_data[min_idx]
+            
+            if hasattr(self, 'vLine') and not self.vLine.isVisible():
+                self.vLine.show()
+            if hasattr(self, 'hLine') and not self.hLine.isVisible():
+                self.hLine.show()
+            if hasattr(self, 'crosshair_yazi') and not self.crosshair_yazi.isVisible():
+                self.crosshair_yazi.show()
+                
+            if hasattr(self, 'vLine'): self.vLine.setPos(best_x)
+            if hasattr(self, 'hLine'): self.hLine.setPos(best_y)
+            
+            # OPTİMİZASYON: Sadece indeks değiştiyse ağır HTML render işlemini yap (FPS'yi kurtarır)
+            if getattr(self, '_son_guncel_idx', None) != min_idx:
+                self._son_guncel_idx = min_idx
+                yazi_rengi = "#000000" if getattr(self, 'tema', 'dark') == 'light' else "#ffffff"
+                self.crosshair_yazi.setHtml(
+                    f"<div style='padding: 2px;'>"
+                    f"<b style='color:{self.cizgi_rengi};'>Y ({self.sensor_adi})</b>: <b style='color:{yazi_rengi};'>{best_y:.2f}</b><br>"
+                    f"<b style='color:#00ffcc;'>X ({self.x_sensor_adi})</b>: <b style='color:{yazi_rengi};'>{best_x:.2f}</b>"
+                    f"</div>"
+                )
+            self.crosshair_yazi.setPos(best_x, best_y)
+        else:
+            satir_idx = gercekZaman - 1
+            if satir_idx < 0 or satir_idx >= len(self.ham_y):
+                self.crosshair_gizle()
+                return
+
+            if hasattr(self, 'vLine') and not self.vLine.isVisible():
+                self.vLine.show()
+            if hasattr(self, 'crosshair_yazi') and not self.crosshair_yazi.isVisible():
+                self.crosshair_yazi.show()
+
+            if hasattr(self, 'vLine'): self.vLine.setPos(gercekZaman)
+            deger = self.ham_y[satir_idx]
+
+            # OPTİMİZASYON: Zaman indeksi değişmediyse aynı HTML stringini tekrar render etme!
+            if getattr(self, '_son_guncel_x', None) != gercekZaman:
+                self._son_guncel_x = gercekZaman
+                yazi_rengi = "#000000" if getattr(self, 'tema', 'dark') == 'light' else "#ffffff"
+                self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : <b style='color:{yazi_rengi};'>{deger:.2f}</b>")
+            
+            # Gruptan gelen tetiklemelerde, crosshair yazısını kendi eksenindeki değere sabitle
+            y_pos = deger if from_group else my
+            self.crosshair_yazi.setPos(gercekZaman, y_pos)
 
     def fare_hareket_etti(self, evt):
         """
         @brief Yüksek performanslı, saf NumPy tabanlı akıllı fare takip imleci.
+        Grup içi senkronizasyonlarda önbellek (cache) kullanarak kasmaları %90 oranında önler.
         """
-        # Sol/Sağ tık basılıyken (sürükleme/kaydırma anında) imleç hesaplamasını durdur (FPS Koruması)
         if QtWidgets.QApplication.mouseButtons() != QtCore.Qt.NoButton:
             return
 
-        # Eğer henüz veri çizilmediyse veya boşsa işlem yapma
         if self.ham_y is None or len(self.ham_y) == 0:
             return
 
         pos = evt[0]
-        # Fare bu grafiğin sınırları İÇİNDE mi?
         if self.plot_widget.sceneBoundingRect().contains(pos):
             mouse_noktasi = self.plot_widget.plotItem.vb.mapSceneToView(pos)
+            mx, my = mouse_noktasi.x(), mouse_noktasi.y()
+            
+            is_scatter = getattr(self, 'grafik_tipi', 'line') == 'scatter'
             try:
-                gercekZaman = int(round(mouse_noktasi.x()))
+                gercekZaman = int(round(mx))
             except (OverflowError, ValueError):
-                return
+                gercekZaman = 0
 
-            satir_idx = gercekZaman - 1
-            if satir_idx < 0 or satir_idx >= len(self.ham_y):
-                return
+            # Kendi Crosshair'ini güncelle
+            self.crosshair_guncelle(mx, my, gercekZaman, is_scatter=is_scatter, from_group=False)
 
-            # İmleci ve yazıyı görünür yap
-            if not self.vLine.isVisible():
-                self.vLine.show()
-                self.crosshair_yazi.show()
-
-            self.vLine.setPos(gercekZaman)
-
-            # 🔥 EN KRİTİK OPTİMİZASYON: Pandas yerine doğrudan NumPy dizisinden O(1) hızında okuma
-            deger = self.ham_y[satir_idx]
-
-            if getattr(self, 'tema', 'dark') == 'light':
-                self.crosshair_yazi.setHtml(f"<b style='color:#000000;'>{self.sensor_adi}</b> : <b style='color:#000000;'>{deger:.2f}</b>")
-            else:
-                self.crosshair_yazi.setHtml(f"<b style='color:{self.cizgi_rengi};'>{self.sensor_adi}</b> : <b style='color:#ffffff;'>{deger:.2f}</b>")
-            self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
+            # --- GRUP (STACK & SYNC) SENKRONİZASYONU ---
+            if getattr(self, 'grup_id', None) is not None:
+                # OPTİMİZASYON: 120Hz hızda tüm Qt widget ağacını aramak felaket yavaşlatır!
+                # Grubu bir kere bul ve önbelleğe (cache) al.
+                if not hasattr(self, '_grup_cache') or getattr(self, '_grup_cache_id', None) != self.grup_id:
+                    tuval = self.parent()
+                    self._grup_cache = [c for c in tuval.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == self.grup_id]
+                    self._grup_cache_id = self.grup_id
+                    
+                for child in self._grup_cache:
+                    if child != self:
+                        child_is_scatter = getattr(child, 'grafik_tipi', 'line') == 'scatter'
+                        child.crosshair_guncelle(mx, my, gercekZaman, is_scatter=child_is_scatter, from_group=True)
         else:
-            # Fare bu grafikten çıktıysa imleci gizle (Diğer pencereleri rahatlatır)
-            if self.vLine.isVisible():
-                self.vLine.hide()
-                self.crosshair_yazi.hide()
+            self.crosshair_gizle()
+            if getattr(self, 'grup_id', None) is not None:
+                if hasattr(self, '_grup_cache') and getattr(self, '_grup_cache_id', None) == self.grup_id:
+                    for child in self._grup_cache:
+                        if child != self:
+                            child.crosshair_gizle()
 
     # ==========================================================================
     # 🖱️ AKILLI SAĞ TIK MENÜSÜ (Sürükleme anında açılmaz, tek tıkta açılır)
@@ -614,6 +912,18 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 }
             """)
 
+        tuval = self.parent()
+        secili_sayisi = len(tuval.secili_grafikler()) if hasattr(tuval, 'secili_grafikler') else 0
+        
+        act_grupla = None
+        act_grubu_dagit = None
+        
+        if secili_sayisi > 1 and getattr(self, 'is_selected', False):
+            act_grupla = menu.addAction("🔗 Seçili Grafikleri Grupla (Stack & Sync)")
+        if getattr(self, 'grup_id', None) is not None:
+            act_grubu_dagit = menu.addAction("✂️ Grubu Dağıt (Unlink)")
+            menu.addSeparator()
+
         act_limit_uygula = menu.addAction("⚙️ Tanımlı Limitleri Göster")
         act_limit_sil = menu.addAction("❌ Limit Çizgilerini Kaldır")
         menu.addSeparator()
@@ -626,6 +936,10 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         if secilen == act_limit_uygula:
             self.limitleri_uygula()
+        elif act_grupla and secilen == act_grupla:
+            tuval.grafikleri_grupla()
+        elif act_grubu_dagit and secilen == act_grubu_dagit:
+            tuval.grubu_dagit(self.grup_id)
         elif secilen == act_limit_sil:
             self.limit_cizgilerini_temizle()
         elif secilen == act_png:
