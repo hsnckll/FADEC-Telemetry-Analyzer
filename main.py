@@ -93,6 +93,11 @@ QTableView, QTableWidget {
     border: 1px solid #333333;
 }
 
+QHeaderView {
+    background-color: #181818;
+    border: none;
+}
+
 QHeaderView::section {
     background-color: #252526;
     color: #00ffcc;
@@ -190,29 +195,66 @@ QComboBox::down-arrow {
 }
 
 
+QComboBox:editable {
+    background-color: #2b2b2b;
+}
+
+QComboBox:editable QLineEdit {
+    background-color: transparent;
+    color: #ffffff;
+    border: none;
+    font-size: 11pt;
+    font-weight: bold;
+    selection-background-color: #00ffcc;
+    selection-color: #000000;
+}
+
 QComboBox QAbstractItemView {
-    background-color: #1e1e1e;
+    background-color: #222226;
     color: #ffffff;
     selection-background-color: #00ffcc;
     selection-color: #000000;
     border: 1px solid #444444;
+    border-radius: 4px;
     outline: none;
     padding: 4px;
 }
+
 QComboBox QAbstractItemView::item {
-    min-height: 26px;
-    padding: 4px 8px;
+    min-height: 28px;
+    padding: 6px 10px;
     color: #ffffff;
-    background-color: #1e1e1e;
+    background-color: #222226;
+    border-radius: 3px;
 }
+
 QComboBox QAbstractItemView::item:hover {
-    background-color: #2d2d30;
+    background-color: #2e2e38;
     color: #00ffcc;
 }
+
 QComboBox QAbstractItemView::item:selected {
     background-color: #00ffcc;
     color: #000000;
     font-weight: bold;
+}
+
+QComboBox QAbstractItemView::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #555555;
+    background-color: #252526;
+    border-radius: 3px;
+    margin-right: 8px;
+}
+
+QComboBox QAbstractItemView::indicator:hover {
+    border: 1px solid #00ffcc;
+}
+
+QComboBox QAbstractItemView::indicator:checked {
+    background-color: #00ffcc;
+    border: 1px solid #00ffcc;
 }
 
 QCheckBox {
@@ -307,6 +349,11 @@ QTableView, QTableWidget {
     border: 1px solid #cbd5e1;
     selection-background-color: #0284c7;
     selection-color: #ffffff;
+}
+
+QHeaderView {
+    background-color: #f1f5f9;
+    border: none;
 }
 
 QHeaderView::section {
@@ -973,6 +1020,109 @@ def lttb_downsample(x, y, threshold=3000):
     return sampled_x, sampled_y
 
 
+class CompleterItemDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    @brief QCompleter açılır arama listelerindeki öğelerin dikey kırpılmasını önleyen,
+           metinlerin dikeyde tam ve ferah görünmesi için yeterli satır yüksekliği sağlayan delege.
+    """
+    def __init__(self, parent=None, satir_yuksekligi=36):
+        super().__init__(parent)
+        self.satir_yuksekligi = satir_yuksekligi
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setHeight(max(size.height(), self.satir_yuksekligi))
+        return size
+
+
+class ChecklistEventFilter(QtCore.QObject):
+    """
+    @brief QCompleter popup'ında bir öğeye tıklandığında, ComboBox'ın QStandardItemModel'indeki
+           karşılık gelen öğenin checkbox durumunu (Checked/Unchecked) tersine çevirir.
+           QCompleter'ın 'activated' sinyali tetiklenmeden önce yakalanır; popup kapanmaz.
+    """
+    def __init__(self, combo, callback=None, completer_popup=None):
+        super().__init__(combo)
+        self.combo = combo
+        self.callback = callback
+        self.completer_popup = completer_popup  # QCompleter'ın popup()'ı (ayrı QListView)
+        self._toggling = False  # çift tetiklenme koruması
+
+    def _toggle_by_text(self, text, combo_model, sip_mod):
+        """Combo modelinde metni eşleşen checkable öğeyi toggle et."""
+        if not combo_model or sip_mod.isdeleted(combo_model):
+            return
+        for i in range(combo_model.rowCount()):
+            it = combo_model.item(i)
+            if it and it.text() == text and bool(it.flags() & QtCore.Qt.ItemIsUserCheckable):
+                new_state = QtCore.Qt.Unchecked if it.checkState() == QtCore.Qt.Checked else QtCore.Qt.Checked
+                it.setCheckState(new_state)
+                break
+
+    def eventFilter(self, obj, event):
+        try:
+            from PyQt5 import sip
+            combo = getattr(self, 'combo', None)
+            if combo is None or sip.isdeleted(combo):
+                return False
+
+            # ── Completer popup'ından gelen tıklama ──────────────────────────
+            comp_popup = getattr(self, 'completer_popup', None)
+            if comp_popup and not sip.isdeleted(comp_popup):
+                vp = comp_popup.viewport()
+                if vp and not sip.isdeleted(vp) and obj == vp:
+                    ev_type = event.type()
+
+                    if ev_type == QtCore.QEvent.MouseButtonPress:
+                        # Press anında toggle et — Release (QCompleter.activated) gelmeden önce
+                        idx = comp_popup.indexAt(event.pos())
+                        if idx.isValid():
+                            text = idx.data(QtCore.Qt.DisplayRole)
+                            self._toggle_by_text(text, combo.model(), sip)
+                            if self.callback:
+                                self.callback()
+                        # Press'i tüket → QListView seçim yapmasın (Release'i de beklemez)
+                        return True
+
+                    if ev_type == QtCore.QEvent.MouseButtonRelease:
+                        # Release'i de tüket → QCompleter._q_complete (popup kapat) engellenir
+                        return True
+
+            # ── ComboBox'ın kendi view()'undan gelen tıklama ─────────────────
+            view = combo.view()
+            if not view or sip.isdeleted(view):
+                return False
+            viewport = view.viewport()
+            if not viewport or sip.isdeleted(viewport) or obj != viewport:
+                return False
+
+            ev_type = event.type()
+            if ev_type in (QtCore.QEvent.MouseButtonPress, QtCore.QEvent.MouseButtonDblClick):
+                idx = view.indexAt(event.pos())
+                if idx.isValid():
+                    model = combo.model()
+                    if model and not sip.isdeleted(model):
+                        item = model.itemFromIndex(idx)
+                        if item and bool(item.flags() & QtCore.Qt.ItemIsUserCheckable):
+                            new_state = QtCore.Qt.Unchecked if item.checkState() == QtCore.Qt.Checked else QtCore.Qt.Checked
+                            item.setCheckState(new_state)
+                            if self.callback:
+                                self.callback()
+                        # Tüket ki QComboBox menüyü kapatmasın
+                        return True
+
+            if ev_type == QtCore.QEvent.MouseButtonRelease:
+                # Release olayını yutarak menünün kapanmasını engelliyoruz
+                return True
+        except BaseException:
+            return False
+
+        try:
+            return super().eventFilter(obj, event)
+        except BaseException:
+            return False
+
+
 class PandasModel(QtCore.QAbstractTableModel):
     """
     @brief Milyonlarca satırlık DataFrame'leri 0.001 saniyede yükleyen Sanal Tablo Modeli.
@@ -1071,6 +1221,94 @@ class PandasModel(QtCore.QAbstractTableModel):
 # 8. VERİ YÜKLEME VE İLERLEME DİYALOĞU
 # ==============================================================================
 
+class ZamanSimulasyonDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Simüle Edilmiş Zaman Ayarı")
+        self.setFixedSize(450, 320)
+        
+        tema = "dark"
+        if parent and hasattr(parent, "aktif_tema"):
+            tema = parent.aktif_tema
+
+        if tema == "light":
+            self.setStyleSheet("""
+                QDialog { background-color: #ffffff; color: #0f172a; }
+                QLabel { font-size: 11pt; color: #334155; }
+                QDoubleSpinBox, QDateTimeEdit { background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; font-size: 11pt; }
+                QPushButton { background-color: #0284c7; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; }
+                QPushButton:hover { background-color: #0369a1; }
+                QPushButton#btnOran { background-color: #10b981; }
+                QPushButton#btnOran:hover { background-color: #059669; }
+                QPushButton#btnIptal { background-color: #ef4444; }
+                QPushButton#btnIptal:hover { background-color: #dc2626; }
+            """)
+        else:
+            self.setStyleSheet("""
+                QDialog { background-color: #1e1e24; color: #ffffff; }
+                QLabel { font-size: 11pt; color: #e0e0e0; }
+                QDoubleSpinBox, QDateTimeEdit { background-color: #2b2b36; color: #ffffff; border: 1px solid #444; border-radius: 4px; padding: 5px; font-size: 11pt; }
+                QPushButton { background-color: #0078D7; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; }
+                QPushButton:hover { background-color: #005A9E; }
+                QPushButton#btnOran { background-color: #5cb85c; }
+                QPushButton#btnOran:hover { background-color: #4cae4c; }
+                QPushButton#btnIptal { background-color: #d9534f; }
+                QPushButton#btnIptal:hover { background-color: #c9302c; }
+            """)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        lbl_bilgi = QtWidgets.QLabel(
+            "DataLog verisinde zaman bulunamadı.\n\n"
+            "Maskeleme için lütfen kaydın başlangıç "
+            "zamanını ve sensör okuma frekansını (Hz) girin.\n\n"
+        )
+        lbl_bilgi.setWordWrap(True)
+        layout.addWidget(lbl_bilgi)
+
+        form_layout = QtWidgets.QFormLayout()
+        
+        self.dt_baslangic = QtWidgets.QDateTimeEdit(QtCore.QDateTime.currentDateTime())
+        self.dt_baslangic.setDisplayFormat("dd.MM.yyyy HH:mm:ss.zzz")
+        self.dt_baslangic.setCalendarPopup(True)
+        form_layout.addRow("Başlangıç Zamanı:", self.dt_baslangic)
+
+        self.spin_frekans = QtWidgets.QDoubleSpinBox()
+        self.spin_frekans.setRange(0.001, 100000.0)
+        self.spin_frekans.setValue(10.0)
+        self.spin_frekans.setDecimals(3)
+        self.spin_frekans.setSuffix(" Hz")
+        form_layout.addRow("Sensör Frekansı:", self.spin_frekans)
+
+        layout.addLayout(form_layout)
+        layout.addStretch()
+
+        btn_layout = QtWidgets.QHBoxLayout()
+        self.btn_simule = QtWidgets.QPushButton("Simüle Et ve\nMaskele")
+        self.btn_oran = QtWidgets.QPushButton("İndeks Oranlama\n(Zaman kullanma)")
+        self.btn_oran.setObjectName("btnOran")
+        self.btn_iptal = QtWidgets.QPushButton("İptal")
+        self.btn_iptal.setObjectName("btnIptal")
+
+        btn_layout.addWidget(self.btn_simule)
+        btn_layout.addWidget(self.btn_oran)
+        btn_layout.addWidget(self.btn_iptal)
+        layout.addLayout(btn_layout)
+
+        self.btn_simule.clicked.connect(self.accept_simule)
+        self.btn_oran.clicked.connect(self.accept_oran)
+        self.btn_iptal.clicked.connect(self.reject)
+
+        self.sonuc = None
+
+    def accept_simule(self):
+        self.sonuc = "simule"
+        self.accept()
+
+    def accept_oran(self):
+        self.sonuc = "oran"
+        self.accept()
+
 class YuklemeDialog(QtWidgets.QDialog):
     """
     @brief Veri dosyaları okunurken anlık ilerleme durumunu gösteren modern modal iletişim kutusu.
@@ -1161,7 +1399,7 @@ class YuklemeThread(QtCore.QThread):
     finished_signal = QtCore.pyqtSignal(object, list)
     error_signal = QtCore.pyqtSignal(str)
 
-    def __init__(self, data_yolu, event_yolu, parent=None):
+    def __init__(self, data_yolu, event_yolu, parent=None, simule_baslangic=None, simule_frekans=None):
         """
         @brief YuklemeThread kurucu fonksiyonu.
         @param data_yolu (str) Sensör ölçümlerini içeren dosya yolu (CSV/Excel).
@@ -1171,6 +1409,8 @@ class YuklemeThread(QtCore.QThread):
         super().__init__(parent)
         self.data_yolu = data_yolu
         self.event_yolu = event_yolu
+        self.simule_baslangic = simule_baslangic
+        self.simule_frekans = simule_frekans
 
     def run(self):
         """
@@ -1224,8 +1464,32 @@ class YuklemeThread(QtCore.QThread):
             data_zaman_kolonu = df_data.columns[0]
             event_zaman_kolonu = df_event.columns[0]
 
-            ilk_zaman_str = df_data.iloc[0][data_zaman_kolonu]
-            baslangic_zamani = pd.to_datetime(ilk_zaman_str, errors='coerce')
+            # Eğer kullanıcı manuel simülasyon ayarladıysa
+            if self.simule_baslangic is not None and self.simule_frekans is not None:
+                # Simüle edilmiş bir Datetime serisi oluştur
+                # period in seconds: 1 / frekans
+                periyot_ms = int((1.0 / self.simule_frekans) * 1000)
+                simule_zaman_serisi = pd.date_range(
+                    start=self.simule_baslangic, 
+                    periods=len(df_data), 
+                    freq=f'{periyot_ms}ms'
+                ).strftime('%Y-%m-%d %H:%M:%S.%f').str[:-3]
+                df_data.insert(0, "Simule_Zaman", simule_zaman_serisi)
+                data_zaman_kolonu = "Simule_Zaman"
+                baslangic_zamani = pd.to_datetime(self.simule_baslangic)
+            else:
+                ilk_zaman_str = str(df_data.iloc[0][data_zaman_kolonu]).strip()
+                
+                # Sadece 1.0 gibi sayısal değerlerin 1970 tarihi olarak (False Positive) 
+                # algılanmasını engellemek için string içinde zaman sembolü arıyoruz.
+                baslangic_zamani = pd.NaT
+                if (':' in ilk_zaman_str or '-' in ilk_zaman_str or '/' in ilk_zaman_str):
+                    try:
+                        parsed_time = pd.to_datetime(ilk_zaman_str, errors='coerce')
+                        if parsed_time is not pd.NaT:
+                            baslangic_zamani = parsed_time
+                    except:
+                        pass
 
             haric_kolonlar = {'time', 'zaman_gercek', 'zaman_gorsel', 'zaman_index', 'motor_no', 'ayar_1', 'ayar_2', 'ayar_3', str(event_zaman_kolonu).lower()}
             hata_kolonlari = [col for col in df_event.columns if str(col).lower() not in haric_kolonlar]
@@ -1247,13 +1511,45 @@ class YuklemeThread(QtCore.QThread):
                     valid_mask = hatali_zamanlar.notna()
                     if valid_mask.any():
                         fark_sec = (hatali_zamanlar[valid_mask] - baslangic_zamani).dt.total_seconds()
-                        en_yakin_indexler = (fark_sec * 10).round().astype(np.int64)
+                        
+                        # Eğer simülasyon frekansı varsa onu kullan, yoksa veriden anlamaya çalış (varsayılan 10)
+                        frekans_carpani = 10.0
+                        if hasattr(self, 'simule_frekans') and self.simule_frekans is not None:
+                            frekans_carpani = self.simule_frekans
+                            
+                        en_yakin_indexler = (fark_sec * frekans_carpani).round().astype(np.int64)
                         en_yakin_indexler = en_yakin_indexler.clip(0, len(df_data) - 1)
                         col_idx = df_data.columns.get_loc(hata_kolonu)
                         df_data.iloc[en_yakin_indexler.values, col_idx] = 1
+            else:
+                # =============================================================
+                # ZAMAN OLMADIĞI DURUMLAR (İNDEX/ORAN TABANLI EŞLEŞTİRME)
+                # =============================================================
+                oran = len(df_data) / max(len(df_event), 1)
+                
+                for hata_kolonu in hata_kolonlari:
+                    aktif_olaylar = df_event[pd.to_numeric(df_event[hata_kolonu], errors='coerce').fillna(0) == 1]
+                    if aktif_olaylar.empty:
+                        continue
+                    
+                    # Hata dosyasındaki satır indeksleri
+                    event_indexler = aktif_olaylar.index.values
+                    
+                    # Ana verideki tekil karşılık gelen indeksleri hesapla
+                    hedef_indexler = np.floor(event_indexler * oran).astype(int)
+                    hedef_indexler = np.clip(hedef_indexler, 0, len(df_data) - 1)
+                    
+                    col_idx = df_data.columns.get_loc(hata_kolonu)
+                    
+                    # Blok yayılımını (kırmızılık taşmasını) engellemek için sadece ilgili tekil satırları işaretle
+                    df_data.iloc[hedef_indexler, col_idx] = 1
 
             df_data["Zaman_Index"] = range(1, len(df_data) + 1)
-            df_data["Zaman_Gorsel"] = df_data[data_zaman_kolonu]
+            
+            if baslangic_zamani is not pd.NaT:
+                df_data["Zaman_Gorsel"] = df_data[data_zaman_kolonu]
+            else:
+                df_data["Zaman_Gorsel"] = df_data["Zaman_Index"].astype(str)
 
             self.progress_signal.emit(100, "✨ Yükleme Tamamlandı!")
             self.finished_signal.emit(df_data, hata_kolonlari)
@@ -1349,6 +1645,34 @@ class LimitPenceresi(QtWidgets.QDialog):
         if hasattr(self.ui, 'btn_limitKaldir'):
             self.ui.btn_limitKaldir.clicked.connect(self.limitleriKaldir)
 
+        # ── Canlı Arama Kutusu Ekleme ──
+        self.txt_sensor_ara = QtWidgets.QLineEdit(self)
+        self.txt_sensor_ara.setPlaceholderText("Sensör Ara ...")
+        self.txt_sensor_ara.setClearButtonEnabled(True)
+        self.txt_sensor_ara.setMinimumHeight(34)
+        self.txt_sensor_ara.setStyleSheet("""
+            QLineEdit {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1.5px solid #383842;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 10pt;
+            }
+            QLineEdit:focus {
+                border: 1.5px solid #00ffcc;
+            }
+        """)
+        
+        # Layout içerisinde list_widget'tan hemen önceye ekle
+        idx = self.ui.verticalLayout.indexOf(self.ui.limit_sensor_listesi)
+        if idx >= 0:
+            self.ui.verticalLayout.insertWidget(idx, self.txt_sensor_ara)
+        else:
+            self.ui.verticalLayout.addWidget(self.txt_sensor_ara)
+            
+        self.txt_sensor_ara.textChanged.connect(self.sensorleri_filtrele)
+
         tanimli = getattr(parent, 'tanimli_sensorler', None)
         if tanimli:
             for sensor in tanimli:
@@ -1364,6 +1688,16 @@ class LimitPenceresi(QtWidgets.QDialog):
                     item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
                     item.setCheckState(QtCore.Qt.Unchecked)
                     self.ui.limit_sensor_listesi.addItem(item)
+
+    def sensorleri_filtrele(self, metin):
+        """
+        @brief Arama kutusuna yazılan metne göre sensör listesini canlı filtreler.
+        """
+        arama_metni = metin.lower()
+        for i in range(self.ui.limit_sensor_listesi.count()):
+            item = self.ui.limit_sensor_listesi.item(i)
+            eslesiyor = arama_metni in item.text().lower()
+            item.setHidden(not eslesiyor)
 
     def degisiklikleriUygula(self):
         """
@@ -1535,12 +1869,86 @@ class HeatmapPenceresi(QtWidgets.QDialog):
 
         for kolon in self.sensor_kolonlar:
             oge = QStandardItem(kolon)
-            oge.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            oge.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             oge.setData(Qt.Unchecked, Qt.CheckStateRole)
+            oge.setData(kolon, Qt.DisplayRole)
+            oge.setData(kolon, Qt.EditRole)
             self.kutu_modeli.appendRow(oge)
 
         self.ui.combobx_kolon.setModel(self.kutu_modeli)
-        self.ui.combobx_kolon.setPlaceholderText("Sensörleri Seçiniz...")
+
+        # ── Arama ve Checkbox (Checklist) Mantığı ──
+        self.ui.combobx_kolon.setEditable(True)
+        self.ui.combobx_kolon.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        if self.ui.combobx_kolon.lineEdit():
+            self.ui.combobx_kolon.lineEdit().setPlaceholderText("Sensör Ara ...")
+            self.ui.combobx_kolon.lineEdit().setStyleSheet("""
+                QLineEdit {
+                    background-color: transparent;
+                    color: #ffffff;
+                    border: none;
+                    font-size: 11pt;
+                    font-weight: bold;
+                    padding: 0px 8px;
+                }
+            """)
+
+        self.heatmap_completer = QtWidgets.QCompleter(self.ui.combobx_kolon)
+        self.heatmap_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.heatmap_completer.setFilterMode(Qt.MatchContains)
+        self.heatmap_completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+        self.heatmap_completer.setModel(self.kutu_modeli)
+        
+        self.ui.combobx_kolon.setCompleter(self.heatmap_completer)
+        self.ui.combobx_kolon.setCurrentIndex(-1)
+
+        popup_stili = """
+            QListView {
+                background-color: #222226;
+                color: #ffffff;
+                border: 1.5px solid #00ffcc;
+                border-radius: 6px;
+                padding: 4px;
+                font-family: 'Segoe UI', Arial;
+                font-size: 11pt;
+                outline: none;
+            }
+            QListView::item {
+                padding: 2px 10px;
+                border-radius: 4px;
+                color: #ffffff;
+            }
+            QListView::item:hover, QListView::item:selected {
+                background-color: #2e2e38;
+                color: #00ffcc;
+            }
+            QListView::indicator {
+                width: 15px;
+                height: 15px;
+                border: 1px solid #555555;
+                background-color: #252526;
+                border-radius: 3px;
+            }
+            QListView::indicator:checked {
+                background-color: #00ffcc;
+                border: 1px solid #00ffcc;
+            }
+        """
+
+        if self.heatmap_completer.popup():
+            self.heatmap_completer.popup().setItemDelegate(CompleterItemDelegate(self.heatmap_completer.popup(), 34))
+            self.heatmap_completer.popup().setStyleSheet(popup_stili)
+            self.heatmap_checklist_filter = ChecklistEventFilter(
+                self.ui.combobx_kolon,
+                completer_popup=self.heatmap_completer.popup()
+            )
+            self.heatmap_completer.popup().viewport().installEventFilter(self.heatmap_checklist_filter)
+
+        if self.ui.combobx_kolon.view():
+            self.ui.combobx_kolon.view().setItemDelegate(CompleterItemDelegate(self.ui.combobx_kolon.view(), 34))
+            self.ui.combobx_kolon.view().setStyleSheet(popup_stili)
+            if hasattr(self, 'heatmap_checklist_filter'):
+                self.ui.combobx_kolon.view().viewport().installEventFilter(self.heatmap_checklist_filter)
 
         self.ui.btn_uygula.clicked.connect(self.kolon_ekle)
         self.ui.btn_tumunuGoster.clicked.connect(self.tumunu_goster)
@@ -1854,13 +2262,240 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             layout_kapsayici.addWidget(self.hata_Tablo)
             self.splitter.insertWidget(0, self.tablo_kapsayici)
 
+        # ----------------------------------------------------------------------
+        # Tab 2: Sensör Listesi Canlı Arama Kutusu (Seçimleri Korumalı)
+        # ----------------------------------------------------------------------
+        if hasattr(self, 'splitter_sol_listeler') and hasattr(self, 'liste_sensor_secim'):
+            self.sensor_secim_kapsayici = QtWidgets.QWidget()
+            self.sensor_secim_kapsayici.setStyleSheet("background-color: transparent;")
+            layout_sensor_kapsayici = QtWidgets.QVBoxLayout(self.sensor_secim_kapsayici)
+            layout_sensor_kapsayici.setContentsMargins(0, 0, 0, 0)
+            layout_sensor_kapsayici.setSpacing(4)
 
+            self.txt_hata_sensor_ara = QtWidgets.QLineEdit()
+            self.txt_hata_sensor_ara.setPlaceholderText("Sensör Ara ...")
+            self.txt_hata_sensor_ara.setClearButtonEnabled(True)
+            self.txt_hata_sensor_ara.setMinimumHeight(34)
+            self.txt_hata_sensor_ara.setStyleSheet("""
+                QLineEdit {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                    border: 1.5px solid #383842;
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 10pt;
+                    font-weight: 500;
+                }
+                QLineEdit:focus {
+                    border: 1.5px solid #00ffcc;
+                    background-color: #252528;
+                }
+            """)
+            self.txt_hata_sensor_ara.textChanged.connect(self.hata_sensor_canli_filtrele)
 
+            layout_sensor_kapsayici.addWidget(self.txt_hata_sensor_ara)
+            layout_sensor_kapsayici.addWidget(self.liste_sensor_secim)
+            self.splitter_sol_listeler.insertWidget(1, self.sensor_secim_kapsayici)
+
+        # ----------------------------------------------------------------------
+        # Tab 2: Hata Durumu Seçimi için Akıllı Arama Ayarları (Editable ComboBox)
+        # ----------------------------------------------------------------------
+        if hasattr(self, 'cmb_hataBloklari'):
+            self.cmb_hataBloklari.setMinimumSize(QtCore.QSize(260, 38))
+            self.cmb_hataBloklari.setMaximumSize(QtCore.QSize(380, 38))
+            self.cmb_hataBloklari.setEditable(True)
+            self.cmb_hataBloklari.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+            if self.cmb_hataBloklari.lineEdit():
+                self.cmb_hataBloklari.lineEdit().setPlaceholderText("Hata Durumu Ara...")
+                self.cmb_hataBloklari.lineEdit().setStyleSheet("""
+                    QLineEdit {
+                        background-color: transparent;
+                        color: #ffffff;
+                        border: none;
+                        font-size: 11pt;
+                        font-weight: bold;
+                        padding: 0px 8px;
+                    }
+                """)
+
+            # Açılır menü ve arama tamamlayıcısını baştan koyu tema ile stillendir
+            self.hata_completer = QtWidgets.QCompleter([], self.cmb_hataBloklari)
+            self.hata_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+            self.hata_completer.setFilterMode(QtCore.Qt.MatchContains)
+            self.hata_completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+            self.cmb_hataBloklari.setCompleter(self.hata_completer)
+
+            popup_stili = """
+                QListView {
+                    background-color: #222226;
+                    color: #ffffff;
+                    border: 1.5px solid #00ffcc;
+                    border-radius: 6px;
+                    padding: 4px;
+                    font-family: 'Segoe UI', Arial;
+                    font-size: 11pt;
+                    outline: none;
+                }
+                QListView::item {
+                    padding: 2px 10px;
+                    border-radius: 4px;
+                    color: #ffffff;
+                }
+                QListView::item:hover {
+                    background-color: #2e2e38;
+                    color: #00ffcc;
+                }
+                QListView::item:selected {
+                    background-color: #00ffcc;
+                    color: #121212;
+                    font-weight: bold;
+                }
+            """
+            if self.hata_completer.popup():
+                self.hata_completer.popup().setItemDelegate(CompleterItemDelegate(self.hata_completer.popup(), 36))
+                self.hata_completer.popup().setStyleSheet(popup_stili)
+            if self.cmb_hataBloklari.view():
+                self.cmb_hataBloklari.view().setItemDelegate(CompleterItemDelegate(self.cmb_hataBloklari.view(), 36))
+                self.cmb_hataBloklari.view().setStyleSheet(popup_stili)
+
+        # ----------------------------------------------------------------------
+        # Tab 3: Sensör Listesi Canlı Arama Kutusu ve Akıllı Hata Arama ComboBox'ı
+        # ----------------------------------------------------------------------
+        if hasattr(self, 'verticalLayout_sol_genel') and hasattr(self, 'list_sensorSecim'):
+            self.txt_tab3_sensor_ara = QtWidgets.QLineEdit()
+            self.txt_tab3_sensor_ara.setPlaceholderText("Sensör Ara ...")
+            self.txt_tab3_sensor_ara.setClearButtonEnabled(True)
+            self.txt_tab3_sensor_ara.setMinimumHeight(34)
+            self.txt_tab3_sensor_ara.setStyleSheet("""
+                QLineEdit {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                    border: 1.5px solid #383842;
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 10pt;
+                    font-weight: 500;
+                }
+                QLineEdit:focus {
+                    border: 1.5px solid #00ffcc;
+                    background-color: #252528;
+                }
+            """)
+            self.txt_tab3_sensor_ara.textChanged.connect(self.tab3_sensor_canli_filtrele)
+            self.verticalLayout_sol_genel.insertWidget(1, self.txt_tab3_sensor_ara)
+
+        if hasattr(self, 'cmb_HataBloklariGenel'):
+            self.cmb_HataBloklariGenel.setMinimumSize(QtCore.QSize(260, 38))
+            self.cmb_HataBloklariGenel.setEditable(True)
+            self.cmb_HataBloklariGenel.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+            if self.cmb_HataBloklariGenel.lineEdit():
+                self.cmb_HataBloklariGenel.lineEdit().setPlaceholderText("Hata Durumu Ara...")
+                self.cmb_HataBloklariGenel.lineEdit().setStyleSheet("""
+                    QLineEdit {
+                        background-color: transparent;
+                        color: #ffffff;
+                        border: none;
+                        font-size: 11pt;
+                        font-weight: bold;
+                        padding: 0px 8px;
+                    }
+                """)
+
+            # Tab 2 ile aynı QCompleter mimarisi (focus sorunu yok)
+            self.genel_hata_completer = QtWidgets.QCompleter([], self.cmb_HataBloklariGenel)
+            self.genel_hata_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+            self.genel_hata_completer.setFilterMode(QtCore.Qt.MatchContains)
+            self.genel_hata_completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+            self.genel_hata_completer.setCompletionRole(QtCore.Qt.DisplayRole)
+            self.cmb_HataBloklariGenel.setCompleter(self.genel_hata_completer)
+
+            popup_stili_genel = """
+                QListView {
+                    background-color: #222226;
+                    color: #ffffff;
+                    border: 1.5px solid #00ffcc;
+                    border-radius: 6px;
+                    padding: 4px;
+                    font-family: 'Segoe UI', Arial;
+                    font-size: 11pt;
+                    outline: none;
+                }
+                QListView::item {
+                    padding: 2px 10px;
+                    border-radius: 4px;
+                    color: #ffffff;
+                }
+                QListView::item:hover {
+                    background-color: #2e2e38;
+                    color: #00ffcc;
+                }
+                QListView::item:selected {
+                    background-color: #2e2e38;
+                    color: #00ffcc;
+                }
+                QListView::indicator {
+                    width: 15px;
+                    height: 15px;
+                    border: 1px solid #555555;
+                    background-color: #252526;
+                    border-radius: 3px;
+                }
+                QListView::indicator:checked {
+                    background-color: #00ffcc;
+                    border: 1px solid #00ffcc;
+                }
+            """
+            if self.genel_hata_completer.popup():
+                self.genel_hata_completer.popup().setItemDelegate(CompleterItemDelegate(self.genel_hata_completer.popup(), 34))
+                self.genel_hata_completer.popup().setStyleSheet(popup_stili_genel)
+                # Completer popup'ına checklist tıklama filtresi: tıklayınca kapanmaz, checkbox toggle edilir
+                self.tab3_checklist_filter = ChecklistEventFilter(
+                    self.cmb_HataBloklariGenel,
+                    completer_popup=self.genel_hata_completer.popup()
+                )
+                self.genel_hata_completer.popup().viewport().installEventFilter(self.tab3_checklist_filter)
+
+            if self.cmb_HataBloklariGenel.view():
+                self.cmb_HataBloklariGenel.view().setItemDelegate(CompleterItemDelegate(self.cmb_HataBloklariGenel.view(), 34))
+                self.cmb_HataBloklariGenel.view().setStyleSheet(popup_stili_genel)
+                self.cmb_HataBloklariGenel.view().viewport().installEventFilter(self.tab3_checklist_filter)
 
 
         self.GenelHataBloklari.setBackground('#000000')
         self.GenelHataBloklari.showGrid(x=True, y=True, alpha=0.3)
         self.GenelHataBloklari.setLabel('bottom', "Zaman (İndeks)")
+
+        # ----------------------------------------------------------------------
+        # Tab 1: Canlı Sensör Arama ve Filtreleme Araç Çubuğu
+        # ----------------------------------------------------------------------
+        if hasattr(self, 'layout_toolbar'):
+            self.lbl_tab1_ara_ikon = QtWidgets.QLabel("")
+            self.lbl_tab1_ara_ikon.setStyleSheet("font-size: 13px; color: #00ffcc; margin-left: 8px;")
+
+            self.txt_tab1_sensor_ara = QtWidgets.QLineEdit()
+            self.txt_tab1_sensor_ara.setPlaceholderText("Parametre Ara ...")
+            self.txt_tab1_sensor_ara.setClearButtonEnabled(True)
+            self.txt_tab1_sensor_ara.setMinimumSize(QtCore.QSize(200, 36))
+            self.txt_tab1_sensor_ara.setMaximumSize(QtCore.QSize(280, 36))
+            self.txt_tab1_sensor_ara.setStyleSheet("""
+                QLineEdit {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                    border: 1.5px solid #383842;
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 10pt;
+                    font-weight: 500;
+                }
+                QLineEdit:focus {
+                    border: 1.5px solid #00ffcc;
+                    background-color: #252528;
+                }
+            """)
+            self.txt_tab1_sensor_ara.textChanged.connect(self.tab1_sensor_canli_filtrele)
+
+            self.layout_toolbar.addWidget(self.lbl_tab1_ara_ikon)
+            self.layout_toolbar.addWidget(self.txt_tab1_sensor_ara)
 
         # Buton Bağlantıları
         self.btn_genel_incele.clicked.connect(self.genel_grafik_ciz)
@@ -1976,10 +2611,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.hata_grafik.plotItem.setMenuEnabled(False)
         self.GenelHataBloklari.plotItem.setMenuEnabled(False)
 
-        # Tablo Seçim Optimizasyonu
         self.veri_tablosu.horizontalHeader().setHighlightSections(False)
         self.veri_tablosu.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.veri_tablosu.horizontalHeader().sectionClicked.connect(self.sutuna_tiklandi)
+        
+        self.hata_Tablo.horizontalHeader().setHighlightSections(False)
 
         # Crosshair (Fare Takip İmleçleri)
         self.hLine = pg.InfiniteLine(angle=0)
@@ -2023,6 +2659,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.zoom_timer_hata.setSingleShot(True)
         self.zoom_timer_hata.timeout.connect(self.grafik_lod_guncelle_hata)
         self.hata_grafik.plotItem.vb.sigXRangeChanged.connect(lambda: self.zoom_timer_hata.start(600))
+
+        # ========== ODAK IŞINLAMA (HIZLI TAŞIMA) SİSTEMİ ==========
+        self.son_fare_x = None
+        self.shortcut_odak_tasi = QtWidgets.QShortcut(QtGui.QKeySequence("F"), self)
+        self.shortcut_odak_tasi.activated.connect(self.odak_bolgesini_fareye_tasi)
+        self.analiz_grafigi.scene().sigMouseClicked.connect(self.grafik_cift_tiklandi)
 
         # ========== DETAYLI HATA ANALİZİ: AKILLI DRAG-RELEASE SİSTEMİ ==========
         self.aktif_ham_veriler_genel = {}
@@ -2274,6 +2916,42 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         hata_kats = getattr(self, 'hata_kategorileri', [])
         model = PandasModel(blok_verisi, hata_kategorileri=hata_kats)
         self.hata_Tablo.setModel(model)
+        self._hata_tablosu_kolon_genisliklerini_ayarla(blok_verisi)
+
+    def _hata_tablosu_kolon_genisliklerini_ayarla(self, model_df):
+        """
+        @brief Hata tablosunda (hata_Tablo) Zaman_Index ve Zaman_Gorsel altyapı kolonlarını gizler;
+               kolon genişliklerini başlık uzunluğuna göre dinamik ve net okunacak şekilde ayarlar.
+        """
+        if model_df is None or model_df.empty:
+            return
+
+        header = self.hata_Tablo.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        font_header = header.font()
+        font_header.setBold(True)
+        fm = QtGui.QFontMetrics(font_header)
+
+        altyapi_kolonlari = {"zaman_index", "zaman_gorsel"}
+
+        for col_idx, col_name in enumerate(model_df.columns):
+            col_lower = str(col_name).lower()
+            if col_lower in altyapi_kolonlari:
+                self.hata_Tablo.setColumnHidden(col_idx, True)
+                continue
+
+            genislik = fm.boundingRect(str(col_name)).width() + 42
+            if not pd.api.types.is_numeric_dtype(model_df[col_name]):
+                genislik = max(genislik, 180)
+            else:
+                genislik = max(genislik, 115)
+
+            self.hata_Tablo.setColumnWidth(col_idx, genislik)
+            self.hata_Tablo.setColumnHidden(col_idx, False)
+
+        # Eğer arama kutusunda yazılı bir filtre varsa tabloya anında uygula
+        if hasattr(self, 'txt_hata_sensor_ara') and self.txt_hata_sensor_ara.text().strip():
+            self._hata_tablosu_sutun_filtrele(self.txt_hata_sensor_ara.text())
 
 
     def HataGrafikMinMaxCiz(self, secilen_sensorler):
@@ -2327,10 +3005,59 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         @param data_yolu (str) Sensör verisi dosya yolu.
         @param event_yolu (str) Olay verisi dosya yolu.
         """
+        # =====================================================================
+        # ZAMAN KOLONU TESPİTİ VE UYARI SİSTEMİ (Heuristic Check)
+        # =====================================================================
+        simule_baslangic = None
+        simule_frekans = None
+        
+        try:
+            if data_yolu.lower().endswith('.csv'):
+                # Sadece ilk satırları hızlıca okuyup kontrol et
+                ilk_satirlar = pd.read_csv(data_yolu, nrows=2, sep=None, engine='python')
+            else:
+                ilk_satirlar = pd.read_excel(data_yolu, nrows=2)
+
+            if not ilk_satirlar.empty:
+                ilk_deger_str = str(ilk_satirlar.iloc[0, 0]).strip()
+                zaman_mi = False
+                
+                # Sadece float olan indeksleri datetime sanmasını engellemek için '-' veya ':' arıyoruz
+                if (':' in ilk_deger_str or '-' in ilk_deger_str or '/' in ilk_deger_str):
+                    try:
+                        if pd.to_datetime(ilk_deger_str, errors='raise') is not pd.NaT:
+                            zaman_mi = True
+                    except:
+                        pass
+                
+                if not zaman_mi:
+                    dialog_simule = ZamanSimulasyonDialog(self)
+                    dialog_simule.exec_()
+                    
+                    if dialog_simule.sonuc == "simule":
+                        simule_baslangic = dialog_simule.dt_baslangic.dateTime().toPyDateTime()
+                        simule_frekans = dialog_simule.spin_frekans.value()
+                    elif dialog_simule.sonuc == "oran":
+                        simule_baslangic = None
+                        simule_frekans = None
+                    else:
+                        return # Kullanıcı iptal etti
+
+        except Exception as e:
+            pass # Ön-okuma hata verirse (Örn dosya bozuksa), işlemi Thread'e devret, o zaten yakalayıp hata fırlatır
+            
+        # =====================================================================
+
         self.pencere_yukleme = YuklemeDialog(self)
         self.pencere_yukleme.show()
 
-        self.thread_yukleme = YuklemeThread(data_yolu, event_yolu, parent=self)
+        self.thread_yukleme = YuklemeThread(
+            data_yolu, 
+            event_yolu, 
+            parent=self, 
+            simule_baslangic=simule_baslangic, 
+            simule_frekans=simule_frekans
+        )
         self.thread_yukleme.progress_signal.connect(self.pencere_yukleme.guncelle)
         self.thread_yukleme.finished_signal.connect(self._veriler_yuklendi)
         self.thread_yukleme.error_signal.connect(self._yukleme_hatasi)
@@ -2345,6 +3072,17 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.df = df_data
         self.hata_kategorileri = hata_kolonlari
 
+        # 1. Ana Zaman Kolonunu Konum ve İsimden Bağımsız Dinamik Tespit Et
+        self.ana_zaman_kolonu = None
+        for col in self.df.columns:
+            if not pd.api.types.is_numeric_dtype(self.df[col]):
+                seri = pd.to_datetime(self.df[col].iloc[:3].astype(str), errors='coerce')
+                if seri.notna().sum() >= 2:
+                    self.ana_zaman_kolonu = col
+                    break
+        if self.ana_zaman_kolonu is None and len(self.df.columns) > 0:
+            self.ana_zaman_kolonu = self.df.columns[0]
+
         self.veri_tablosu.setUpdatesEnabled(False)
         self.tabloyu_doldur()
         self.veri_tablosu.setUpdatesEnabled(True)
@@ -2354,18 +3092,19 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if hasattr(self, 'pencere_yukleme') and self.pencere_yukleme is not None:
             self.pencere_yukleme.close()
 
-        if "Zaman_Gorsel" in self.df.columns and len(self.df) >= 2:
-            t0 = pd.to_datetime(str(self.df.iloc[0]["Zaman_Gorsel"]))
-            t1 = pd.to_datetime(str(self.df.iloc[1]["Zaman_Gorsel"]))
-            self.zaman_ekseni.baslangic_zamani = t0
-
-            fark = (t1 - t0).total_seconds()
-            dt = fark if fark > 0 else 0.1
-            self.zaman_ekseni.dt_saniye = dt
-            self.zaman_ekseni_hata.baslangic_zamani = t0
-            self.zaman_ekseni_hata.dt_saniye = dt
-            self.zaman_ekseni_genel.baslangic_zamani = t0
-            self.zaman_ekseni_genel.dt_saniye = dt
+        # 2. Grafik Eksenlerine Başlangıç Zamanı ve dt Frekansını Dinamik Tanımla
+        if self.ana_zaman_kolonu and len(self.df) >= 2:
+            t0 = pd.to_datetime(str(self.df.iloc[0][self.ana_zaman_kolonu]), errors='coerce')
+            t1 = pd.to_datetime(str(self.df.iloc[1][self.ana_zaman_kolonu]), errors='coerce')
+            if pd.notna(t0) and pd.notna(t1):
+                self.zaman_ekseni.baslangic_zamani = t0
+                fark = abs((t1 - t0).total_seconds())
+                dt = fark if fark > 0 else 0.1
+                self.zaman_ekseni.dt_saniye = dt
+                self.zaman_ekseni_hata.baslangic_zamani = t0
+                self.zaman_ekseni_hata.dt_saniye = dt
+                self.zaman_ekseni_genel.baslangic_zamani = t0
+                self.zaman_ekseni_genel.dt_saniye = dt
 
     def _yukleme_hatasi(self, hata_metni):
         """
@@ -2418,6 +3157,53 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
             self.cmb_hataBloklari.clear()
             self.cmb_hataBloklari.addItems(self.hata_kategorileri)
+
+            # Akıllı Arama QCompleter entegrasyonu (Harf Harf Canlı Eşleşme)
+            self.hata_completer = QtWidgets.QCompleter(self.hata_kategorileri, self.cmb_hataBloklari)
+            self.hata_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+            self.hata_completer.setFilterMode(QtCore.Qt.MatchContains)
+            self.hata_completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+            self.cmb_hataBloklari.setCompleter(self.hata_completer)
+
+            # Completer Açılır Menüsünü Koyu Zemin ve Canlı Vurgu ile Stillendir (Beyaz Kutuyu Engeller)
+            popup = self.hata_completer.popup()
+            if popup:
+                popup.setItemDelegate(CompleterItemDelegate(popup, 36))
+                popup.setStyleSheet("""
+                    QListView {
+                        background-color: #222226;
+                        color: #ffffff;
+                        border: 1.5px solid #00ffcc;
+                        border-radius: 6px;
+                        padding: 4px;
+                        font-family: 'Segoe UI', Arial;
+                        font-size: 11pt;
+                        outline: none;
+                    }
+                    QListView::item {
+                        padding: 2px 10px;
+                        border-radius: 4px;
+                        color: #ffffff;
+                    }
+                    QListView::item:hover {
+                        background-color: #2e2e38;
+                        color: #00ffcc;
+                    }
+                    QListView::item:selected {
+                        background-color: #00ffcc;
+                        color: #121212;
+                        font-weight: bold;
+                    }
+                """)
+
+            self.hata_completer.activated[str].connect(self._on_hata_completer_secildi)
+            if self.cmb_hataBloklari.lineEdit():
+                try:
+                    self.cmb_hataBloklari.lineEdit().returnPressed.disconnect()
+                except TypeError:
+                    pass
+                self.cmb_hataBloklari.lineEdit().returnPressed.connect(self._on_hata_lineedit_enter)
+
             self.cmb_hataBloklari.currentIndexChanged.connect(self.hataKategoriDegisti)
 
         self.tum_hata_bloklari = {}
@@ -2441,6 +3227,127 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.tum_hata_bloklari[kategori] = bloklar
 
         self.hataKategoriDegisti()
+
+    def _on_hata_completer_secildi(self, text):
+        """
+        @brief QCompleter aramasından bir hata kategorisi seçildiğinde ComboBox'ı o öğeye konumlandırır.
+        """
+        idx = self.cmb_hataBloklari.findText(text)
+        if idx >= 0:
+            self.cmb_hataBloklari.setCurrentIndex(idx)
+        else:
+            self.hataKategoriDegisti()
+
+    def _on_hata_lineedit_enter(self):
+        """
+        @brief Kullanıcı hata arama kutusuna yazıp Enter'a bastığında en uygun hata kategorisini seçer.
+        """
+        text = self.cmb_hataBloklari.currentText().strip()
+        idx = self.cmb_hataBloklari.findText(text)
+        if idx >= 0:
+            self.cmb_hataBloklari.setCurrentIndex(idx)
+        else:
+            # İçeren ilk hatayı bul
+            for i in range(self.cmb_hataBloklari.count()):
+                if text.lower() in self.cmb_hataBloklari.itemText(i).lower():
+                    self.cmb_hataBloklari.setCurrentIndex(i)
+                    break
+
+    def _hata_tablosu_sutun_filtrele(self, aranan):
+        """
+        @brief Hata tablosundaki sütunları aranan kelimeye göre harf harf canlı filtreler.
+               Tek 1 adet Ana Zaman Kolonu en solda referans olarak sabit kalır.
+        """
+        if not hasattr(self, 'hata_Tablo') or self.hata_Tablo.model() is None:
+            return
+
+        model = self.hata_Tablo.model()
+        df_tablo = getattr(model, '_df', None)
+        if df_tablo is None or df_tablo.empty:
+            return
+
+        aranan_kucuk = aranan.strip().lower()
+        ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
+        if ana_zaman is None and len(df_tablo.columns) > 0:
+            ana_zaman = df_tablo.columns[0]
+
+        altyapi_kolonlari = {"zaman_index", "zaman_gorsel"}
+
+        for col_idx, col_name in enumerate(df_tablo.columns):
+            col_lower = str(col_name).lower()
+
+            # Altyapı kolonları her zaman gizli kalır
+            if col_lower in altyapi_kolonlari:
+                self.hata_Tablo.setColumnHidden(col_idx, True)
+                continue
+
+            # Ana zaman referans kolonu her zaman görünür kalır
+            if col_name == ana_zaman or col_idx == 0:
+                self.hata_Tablo.setColumnHidden(col_idx, False)
+                continue
+
+            if not aranan_kucuk:
+                self.hata_Tablo.setColumnHidden(col_idx, False)
+            else:
+                if aranan_kucuk in col_lower:
+                    self.hata_Tablo.setColumnHidden(col_idx, False)
+                else:
+                    self.hata_Tablo.setColumnHidden(col_idx, True)
+
+    def hata_sensor_canli_filtrele(self, aranan):
+        """
+        @brief Tab 2'deki sensör listesini ve Hata Tablosunun sütunlarını aranan metne göre
+               eşzamanlı harf harf canlı filtreler. Önceden işaretlenmiş sensörlerin tiki ASLA bozulmaz.
+        @param aranan (str) Kullanıcının yazdığı filtre metni.
+        """
+        # 1. Hata Tablosunun Sütunlarını Eşzamanlı Filtrele
+        self._hata_tablosu_sutun_filtrele(aranan)
+
+        # 2. Sol Listedeki Sensör Seçimlerini Filtrele
+        if not hasattr(self, 'liste_sensor_secim'):
+            return
+
+        aranan_kucuk = aranan.strip().lower()
+
+        for i in range(self.liste_sensor_secim.count()):
+            item = self.liste_sensor_secim.item(i)
+            if not aranan_kucuk:
+                item.setHidden(False)
+            else:
+                if aranan_kucuk in item.text().lower():
+                    item.setHidden(False)
+                else:
+                    item.setHidden(True)
+
+    def tab3_sensor_canli_filtrele(self, aranan):
+        """
+        @brief Tab 3'teki (Genel Hata Analizi) sensör seçim listesini (list_sensorSecim)
+               aranan metne göre canlı harf filtreler.
+               Önceden işaretlenmiş (Checked) sensörlerin seçim durumu (tiki) ASLA bozulmaz.
+        @param aranan (str) Kullanıcının yazdığı filtre metni.
+        """
+        if not hasattr(self, 'list_sensorSecim'):
+            return
+
+        aranan_kucuk = aranan.strip().lower()
+
+        for i in range(self.list_sensorSecim.count()):
+            item = self.list_sensorSecim.item(i)
+            if not aranan_kucuk:
+                item.setHidden(False)
+            else:
+                if aranan_kucuk in item.text().lower():
+                    item.setHidden(False)
+                else:
+                    item.setHidden(True)
+
+    def _on_tab3_hata_arama_degisti(self, query):
+        """@brief Artık QCompleter tarafından hallediliyor; uyumluluk için bırakıldı."""
+        pass
+
+    def _tab3_hata_ozeti_guncelle(self):
+        """@brief Artık seçim özeti gösterilmiyor; uyumluluk için bırakıldı."""
+        pass
 
     # Geriye dönük uyumluluk takma adı
     HataBloklarıAyıkla = HataBloklariAyikla
@@ -2574,12 +3481,50 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             baslangixX, bitisx = self.secimBolgesi.getRegion()
             self.analiz_grafigi.setXRange(baslangixX, bitisx, padding=0)
 
+    def odak_bolgesini_fareye_tasi(self, hedef_x=None):
+        """
+        @brief Odak bölgesini (LinearRegionItem) bozulmadan hedeflenen X eksenine ışınlar.
+        """
+        if self.secimBolgesi is None:
+            return
+            
+        x_noktasi = hedef_x if hedef_x is not None else self.son_fare_x
+        if x_noktasi is None:
+            return
+
+        mevcut_bas, mevcut_bit = self.secimBolgesi.getRegion()
+        genislik = mevcut_bit - mevcut_bas
+        
+        yeni_bas = x_noktasi - (genislik / 2)
+        yeni_bit = x_noktasi + (genislik / 2)
+        
+        self.secimBolgesi.setRegion([yeni_bas, yeni_bit])
+
+    def grafik_cift_tiklandi(self, event):
+        """
+        @brief Grafiğe çift tıklandığında odağı farenin bulunduğu noktaya ışınlar.
+        """
+        if event.double():
+            # Tıklanılan noktayı ViewBox koordinatlarına (veri eksenine) çevir
+            pos = self.analiz_grafigi.plotItem.vb.mapSceneToView(event.scenePos())
+            self.odak_bolgesini_fareye_tasi(pos.x())
+
     def BolgeSecme(self):
         """
         @brief Ana analiz grafiğinde interaktif bölge seçim arayüzünü açar veya kapatır (Toggle).
         """
         if self.secimBolgesi is None:
-            self.secimBolgesi = pg.LinearRegionItem([50, 100])
+            # Grafiğin X ekseni görünümüne göre bir başlangıç noktası belirle
+            x_min, x_max = self.analiz_grafigi.viewRange()[0]
+            if x_max > x_min:
+                # Ekranda görünenin ortasında %2'lik bir alan oluştur
+                genislik = x_max - x_min
+                bas = x_min + genislik * 0.58
+                bit = x_min + genislik * 0.6
+                self.secimBolgesi = pg.LinearRegionItem([bas, bit])
+            else:
+                self.secimBolgesi = pg.LinearRegionItem([50, 100])
+                
             self.secimBolgesi.setBrush(pg.mkBrush(0, 255, 204, 30))
             self.secimBolgesi.setHoverBrush(pg.mkBrush(0, 255, 204, 70))
             self.analiz_grafigi.addItem(self.secimBolgesi)
@@ -2588,9 +3533,61 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 kenarCizgisi.setPen(pg.mkPen(color=(0, 255, 204), width=3))
                 kenarCizgisi.setHoverPen(pg.mkPen(color='r', width=5))
                 kenarCizgisi.setCursor(Qt.SizeHorCursor)
+                
+            self.secimBolgesi.sigRegionChanged.connect(self.istatistik_guncelle)
+            self.istatistik_guncelle()
         else:
             self.analiz_grafigi.removeItem(self.secimBolgesi)
             self.secimBolgesi = None
+            self.istatistik_guncelle()
+
+    def istatistik_guncelle(self):
+        """
+        @brief İstatistik tablosunu aktif odak bölgesine (secimBolgesi) göre günceller.
+               Odak bölgesi kapalıysa, tüm verilere (global) göre istatistikleri hesaplar.
+        """
+        if not hasattr(self, 'aktif_ham_veriler') or not self.aktif_ham_veriler:
+            return
+
+        x_min, x_max = None, None
+        if self.secimBolgesi is not None:
+            raw_min, raw_max = self.secimBolgesi.getRegion()
+            x_min, x_max = round(raw_min), round(raw_max)
+            
+            # Bölge kenarlarını tam sayıya (veri indexlerine) hizala (Snap to data points)
+            if abs(raw_min - x_min) > 0.01 or abs(raw_max - x_max) > 0.01:
+                self.secimBolgesi.blockSignals(True)
+                self.secimBolgesi.setRegion([x_min, x_max])
+                self.secimBolgesi.blockSignals(False)
+
+        for satir in range(self.tbl_istatistik.rowCount()):
+            item_isim = self.tbl_istatistik.item(satir, 0)
+            if not item_isim: continue
+            sensor_adi = item_isim.text()
+
+            if sensor_adi in self.aktif_ham_veriler:
+                x_raw, y_raw = self.aktif_ham_veriler[sensor_adi]
+                
+                if x_min is not None and x_max is not None:
+                    # Odak alanı içindeki verileri sınırla
+                    mask = (x_raw >= x_min) & (x_raw <= x_max)
+                    y_filtreli = y_raw[mask]
+                else:
+                    y_filtreli = y_raw
+
+                if len(y_filtreli) > 0:
+                    val_min = float(np.nanmin(y_filtreli))
+                    val_max = float(np.nanmax(y_filtreli))
+                    val_mean = float(np.nanmean(y_filtreli))
+                    
+                    # Sütun Sırası: 1=Ortalama, 2=Min, 3=Max
+                    self.tbl_istatistik.setItem(satir, 1, QTableWidgetItem(f"{val_mean:.2f}"))
+                    self.tbl_istatistik.setItem(satir, 2, QTableWidgetItem(f"{val_min:.2f}"))
+                    self.tbl_istatistik.setItem(satir, 3, QTableWidgetItem(f"{val_max:.2f}"))
+                else:
+                    self.tbl_istatistik.setItem(satir, 1, QTableWidgetItem("-"))
+                    self.tbl_istatistik.setItem(satir, 2, QTableWidgetItem("-"))
+                    self.tbl_istatistik.setItem(satir, 3, QTableWidgetItem("-"))
 
     def tamamensilme(self):
         """
@@ -2656,6 +3653,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
             if satir_idx < 0 or satir_idx >= len(self.df):
                 return
+                
+            self.son_fare_x = gercekZaman
 
             self.vLine.setPos(gercekZaman)
             self.vLine.show()
@@ -2756,6 +3755,38 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.veri_tablosu.horizontalHeader().setHighlightSections(False)
         self.veri_tablosu.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
 
+        # Kolon genişliklerini sensör isimleri ve tarih değerleri tam ve net sığacak şekilde ayarla
+        header = self.veri_tablosu.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        font_header = header.font()
+        font_header.setBold(True)
+        fm = QtGui.QFontMetrics(font_header)
+
+        # Dahili altyapı kolonları: bunlar pyqtgraph ve crosshair için arka planda kullanılır,
+        # kullanıcıya gösterilmesine gerek yok. Dinamik tespit: sayısal olmayan (Zaman_Gorsel)
+        # veya salt indeks (Zaman_Index) kolonları gizlenir.
+        altyapi_kolonlari = {"zaman_index", "zaman_gorsel"}
+
+        for col_idx, col_name in enumerate(self.df.columns):
+            col_lower = str(col_name).lower()
+
+            # Altyapı kolonlarını gizle (isim bazlı — bunlar bizim ürettiğimiz sabit kolonlar)
+            if col_lower in altyapi_kolonlari:
+                self.veri_tablosu.setColumnHidden(col_idx, True)
+                continue
+
+            genislik = fm.boundingRect(str(col_name)).width() + 42
+            if not pd.api.types.is_numeric_dtype(self.df[col_name]):
+                genislik = max(genislik, 180)  # Tarih/metin kolonları daha geniş
+            else:
+                genislik = max(genislik, 115)
+            self.veri_tablosu.setColumnWidth(col_idx, genislik)
+            self.veri_tablosu.setColumnHidden(col_idx, False)
+
+        # Eğer arama kutusunda önceden yazılmış bir metin varsa filtreyi hemen uygula
+        if hasattr(self, 'txt_tab1_sensor_ara') and self.txt_tab1_sensor_ara.text().strip():
+            self.tab1_sensor_canli_filtrele(self.txt_tab1_sensor_ara.text())
+
         self.HataBloklariAyikla()
 
         if hasattr(self, 'hata_kategorileri') and len(self.hata_kategorileri) > 0:
@@ -2764,14 +3795,20 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.hata_tablosunu_doldur()
 
         self.liste_sensor_secim.clear()
+        ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
         haric_tutulacaklar = ["Motor_No", "Zaman_Gorsel", "Zaman_Index"]
+        if ana_zaman:
+            haric_tutulacaklar.append(ana_zaman)
         if hasattr(self, 'hata_kategorileri'):
             haric_tutulacaklar.extend(self.hata_kategorileri)
 
-        # Eğer JSON'da tanımlı sensörler varsa onları listele, yoksa tüm CSV kolonlarını listele:
+        # Eğer JSON'da tanımlı sensörler varsa onları listele, yoksa sadece sayısal CSV kolonlarını listele:
         gosterilecek_sensorler = getattr(self, 'tanimli_sensorler', None)
         if not gosterilecek_sensorler:
-            gosterilecek_sensorler = [col for col in self.df.columns if col not in haric_tutulacaklar]
+            gosterilecek_sensorler = [
+                col for col in self.df.columns 
+                if col not in haric_tutulacaklar and pd.api.types.is_numeric_dtype(self.df[col])
+            ]
 
         for kolon in gosterilecek_sensorler:
             if kolon in self.df.columns:
@@ -2780,29 +3817,57 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 item.setCheckState(QtCore.Qt.Unchecked)
                 self.liste_sensor_secim.addItem(item)
 
-        # Tab 3 Seçim Kontrollerini Doldur
+        # Tab 2 Sensör Arama Filtresini Uygula
+        if hasattr(self, 'txt_hata_sensor_ara') and self.txt_hata_sensor_ara.text().strip():
+            self.hata_sensor_canli_filtrele(self.txt_hata_sensor_ara.text())
+
+        # Tab 3 Hata Seçim Kontrollerini Doldur (QCompleter + Checklist QStandardItemModel)
         self.cmb_HataBloklariGenel.blockSignals(True)
         self.cmb_HataBloklariGenel.clear()
 
-        model_combo = QtGui.QStandardItemModel()
-        if hasattr(self, 'hata_kategorileri'):
+        model_combo = QtGui.QStandardItemModel(self.cmb_HataBloklariGenel)
+        if hasattr(self, 'hata_kategorileri') and self.hata_kategorileri:
             for hata in self.hata_kategorileri:
                 item = QtGui.QStandardItem(hata)
-                item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled)
+                item.setFlags(QtCore.Qt.ItemIsUserCheckable | QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
                 item.setCheckState(QtCore.Qt.Unchecked)
+                # QCompleter'ın arama yapabilmesi için metni her iki rolde de ayarla
+                item.setData(hata, QtCore.Qt.DisplayRole)
+                item.setData(hata, QtCore.Qt.EditRole)
                 model_combo.appendRow(item)
         self.cmb_HataBloklariGenel.setModel(model_combo)
         self.cmb_HataBloklariGenel.blockSignals(False)
 
+        # Completer'a modeli atadıktan sonra ComboBox ile bağlantısını tazelemek için setCompleter'ı tekrar çağır
+        if hasattr(self, 'genel_hata_completer'):
+            self.genel_hata_completer.setModel(model_combo)
+            self.cmb_HataBloklariGenel.setCompleter(self.genel_hata_completer)
+            
+            popup = self.genel_hata_completer.popup()
+            if popup:
+                popup.setItemDelegate(CompleterItemDelegate(popup, 34))
+                # EventFilter'ı popup yenilendikten sonra yeniden yükle
+                popup.viewport().removeEventFilter(self.tab3_checklist_filter)
+                self.tab3_checklist_filter.completer_popup = popup
+                popup.viewport().installEventFilter(self.tab3_checklist_filter)
+
+            if self.cmb_HataBloklariGenel.view():
+                self.cmb_HataBloklariGenel.view().viewport().removeEventFilter(self.tab3_checklist_filter)
+                self.cmb_HataBloklariGenel.view().viewport().installEventFilter(self.tab3_checklist_filter)
+
         self.list_sensorSecim.blockSignals(True)
         self.list_sensorSecim.clear()
-        for kolon in self.df.columns:
-            if kolon not in haric_tutulacaklar:
+        for kolon in gosterilecek_sensorler:
+            if kolon in self.df.columns:
                 item = QtWidgets.QListWidgetItem(kolon)
                 item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
                 item.setCheckState(QtCore.Qt.Unchecked)
                 self.list_sensorSecim.addItem(item)
         self.list_sensorSecim.blockSignals(False)
+
+        # Tab 3 Sensör Arama Filtresini Uygula
+        if hasattr(self, 'txt_tab3_sensor_ara') and self.txt_tab3_sensor_ara.text().strip():
+            self.tab3_sensor_canli_filtrele(self.txt_tab3_sensor_ara.text())
 
     def hata_tablosunu_doldur(self, secilen_hata="Hata_Durumu"):
         """
@@ -2816,7 +3881,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         hata_kats = getattr(self, 'hata_kategorileri', [secilen_hata])
         model = PandasModel(self.hatalıVeriler, hata_kategorileri=hata_kats)
         self.hata_Tablo.setModel(model)
-        self.hata_Tablo.setColumnHidden(2, True)
+        self._hata_tablosu_kolon_genisliklerini_ayarla(self.hatalıVeriler)
 
     def _on_range_changing(self):
         """
@@ -2833,7 +3898,34 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                         x_kaba, y_kaba = lttb_downsample(x_raw, y_raw, threshold=500)
                         cizgi.setData(x_kaba, y_kaba)
 
-        self.zoom_timer.start(150)
+    def tab1_sensor_canli_filtrele(self, aranan):
+        """
+        @brief 1. Sekmedeki veri tablosunun sütunlarını aranan kelimeye göre harf harf canlı filtreler.
+               Sadece en baştaki tek 1 adet Ana Zaman Referans Kolonu sabit kalır, diğer tüm kolonlar filtrelenir.
+        @param aranan (str) Kullanıcının arama kutusuna yazdığı metin.
+        """
+        if self.df is None or self.df.empty:
+            return
+
+        aranan_kucuk = aranan.strip().lower()
+        ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
+        if ana_zaman is None and len(self.df.columns) > 0:
+            ana_zaman = self.df.columns[0]
+
+        for col_idx, col_name in enumerate(self.df.columns):
+            # Sadece tek 1 adet ANA ZAMAN sütunu kullanıcıya referans olarak en solda sabit kalsın
+            if col_name == ana_zaman or col_idx == 0:
+                self.veri_tablosu.setColumnHidden(col_idx, False)
+                continue
+
+            if not aranan_kucuk:
+                self.veri_tablosu.setColumnHidden(col_idx, False)
+            else:
+                # Zaman_Gorsel, Zaman_Index ve tüm sensörler aranan metne göre dinamik filtrelenir
+                if aranan_kucuk in str(col_name).lower():
+                    self.veri_tablosu.setColumnHidden(col_idx, False)
+                else:
+                    self.veri_tablosu.setColumnHidden(col_idx, True)
 
     def sutuna_tiklandi(self, sutun):
         """
@@ -2844,7 +3936,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             return
 
         secilen_sutun = self.df.columns[sutun]
-        if secilen_sutun in ["Motor_No", "Zaman_Gorsel", "Zaman_Index"]:
+        ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
+
+        # Ana zaman sütunu veya sayısal olmayan (metin/tarih) sütunlar grafiğe çizilemez
+        if secilen_sutun == ana_zaman or not pd.api.types.is_numeric_dtype(self.df[secilen_sutun]):
             return
 
         if not hasattr(self, 'aktif_ham_veriler'):
@@ -2862,8 +3957,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     break
         else:
             # LTTB ile Eğriyi Çiz
-            x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False)
-            y_raw = self.df[secilen_sutun].to_numpy(dtype=np.float64, copy=False)
+            try:
+                x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False)
+                y_raw = pd.to_numeric(self.df[secilen_sutun], errors='coerce').to_numpy(dtype=np.float64, copy=False)
+            except Exception:
+                return
+
             self.aktif_ham_veriler[secilen_sutun] = (x_raw, y_raw)
 
             x_cizim, y_cizim = lttb_downsample(x_raw, y_raw, threshold=1500)
@@ -2877,17 +3976,15 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             yeniCizgi.setZValue(0)
             self.aktif_cizgiler[secilen_sutun] = yeniCizgi
 
-            # İstatistikleri Ekle
-            val_min = float(np.nanmin(y_raw))
-            val_max = float(np.nanmax(y_raw))
-            val_mean = float(np.nanmean(y_raw))
-
+            # İstatistikleri Ekle (Sadece satır oluşturulur, değerler güncelleyici ile atanır)
             kacTaneSatir = self.tbl_istatistik.rowCount()
             self.tbl_istatistik.insertRow(kacTaneSatir)
             self.tbl_istatistik.setItem(kacTaneSatir, 0, QTableWidgetItem(secilen_sutun))
-            self.tbl_istatistik.setItem(kacTaneSatir, 1, QTableWidgetItem(f"{val_min:.2f}"))
-            self.tbl_istatistik.setItem(kacTaneSatir, 2, QTableWidgetItem(f"{val_max:.2f}"))
-            self.tbl_istatistik.setItem(kacTaneSatir, 3, QTableWidgetItem(f"{val_mean:.2f}"))
+            self.tbl_istatistik.setItem(kacTaneSatir, 1, QTableWidgetItem("-"))
+            self.tbl_istatistik.setItem(kacTaneSatir, 2, QTableWidgetItem("-"))
+            self.tbl_istatistik.setItem(kacTaneSatir, 3, QTableWidgetItem("-"))
+            
+            self.istatistik_guncelle()
 
         self.analiz_grafigi.setTitle(f" {secilen_sutun} - Zaman Analiz Grafiği", color="w", size="11pt")
         self.analiz_grafigi.autoRange()
@@ -2937,9 +4034,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             model.blockSignals(True)
             for i in range(model.rowCount()):
                 item = model.item(i)
-                if item is not None:
+                if item is not None and hasattr(item, 'setCheckState'):
                     item.setCheckState(QtCore.Qt.Unchecked)
             model.blockSignals(False)
+
+        if hasattr(self, '_tab3_hata_ozeti_guncelle'):
+            self._tab3_hata_ozeti_guncelle()
 
         self.list_sensorSecim.blockSignals(True)
         for i in range(self.list_sensorSecim.count()):
@@ -3520,7 +4620,65 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         dialog.setWindowTitle("Grafik Ekle")
         dialog.setLabelText("Görüntülemek istediğiniz sensörü seçiniz:")
         dialog.setComboBoxItems(sensor_listesi)
-        dialog.setComboBoxEditable(False)
+        dialog.setComboBoxEditable(True)
+        
+        combo = dialog.findChild(QtWidgets.QComboBox)
+        if combo:
+            combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+            combo.setMinimumHeight(38)
+            
+            if combo.lineEdit():
+                combo.lineEdit().setPlaceholderText("Sensör Ara ...")
+                combo.lineEdit().setStyleSheet("""
+                    QLineEdit {
+                        background-color: transparent;
+                        color: #ffffff;
+                        border: none;
+                        font-size: 11pt;
+                        font-weight: bold;
+                        padding: 0px 8px;
+                    }
+                """)
+                
+            completer = QtWidgets.QCompleter(sensor_listesi, combo)
+            completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+            completer.setFilterMode(QtCore.Qt.MatchContains)
+            completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+            combo.setCompleter(completer)
+            
+            popup_stili = """
+                QListView {
+                    background-color: #222226;
+                    color: #ffffff;
+                    border: 1.5px solid #00ffcc;
+                    border-radius: 6px;
+                    padding: 4px;
+                    font-family: 'Segoe UI', Arial;
+                    font-size: 11pt;
+                    outline: none;
+                }
+                QListView::item {
+                    padding: 2px 10px;
+                    border-radius: 4px;
+                    color: #ffffff;
+                }
+                QListView::item:hover, QListView::item:selected {
+                    background-color: #2e2e38;
+                    color: #00ffcc;
+                }
+            """
+            
+            if completer.popup():
+                completer.popup().setItemDelegate(CompleterItemDelegate(completer.popup(), 34))
+                completer.popup().setStyleSheet(popup_stili)
+                
+            if combo.view():
+                combo.view().setItemDelegate(CompleterItemDelegate(combo.view(), 34))
+                combo.view().setStyleSheet(popup_stili)
+                
+            # İlk açıldığında metnin seçili (highlight) gelmemesi ve arama placeholder'ının görünmesi için
+            combo.setCurrentIndex(-1)
+
         dialog.setOkButtonText("Oluştur")
         dialog.setCancelButtonText("Vazgeç")
         
@@ -3802,6 +4960,60 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 self.crosshair_yazi_hata.fill = pg.mkBrush(30, 41, 59, 130)
                 self.crosshair_yazi_hata.border = pg.mkPen('#0284c7', width=1.5)
 
+            # Tab 1 Canlı Arama Açık Tema
+            if hasattr(self, 'txt_tab1_sensor_ara'):
+                self.txt_tab1_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #ffffff;
+                        color: #0f172a;
+                        border: 1.5px solid #cbd5e1;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #0284c7;
+                        background-color: #f8fafc;
+                    }
+                """)
+
+            # Tab 2 Canlı Sensör Arama Açık Tema
+            if hasattr(self, 'txt_hata_sensor_ara'):
+                self.txt_hata_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #ffffff;
+                        color: #0f172a;
+                        border: 1.5px solid #cbd5e1;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #0284c7;
+                        background-color: #f8fafc;
+                    }
+                """)
+
+            # Tab 3 Canlı Sensör Arama Açık Tema
+            if hasattr(self, 'txt_tab3_sensor_ara'):
+                self.txt_tab3_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #ffffff;
+                        color: #0f172a;
+                        border: 1.5px solid #cbd5e1;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #0284c7;
+                        background-color: #f8fafc;
+                    }
+                """)
+
             # Serbest Tuval ve Kartları Açık Temaya Güncelle
             if hasattr(self, 'dashboard_container') and hasattr(self.dashboard_container, 'tema_guncelle'):
                 self.dashboard_container.tema_guncelle("light")
@@ -3930,6 +5142,60 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             if hasattr(self, 'crosshair_yazi_hata'):
                 self.crosshair_yazi_hata.fill = pg.mkBrush(0, 0, 0, 200)
                 self.crosshair_yazi_hata.border = pg.mkPen('#00ffcc', width=1)
+
+            # Tab 1 Canlı Arama Koyu Tema
+            if hasattr(self, 'txt_tab1_sensor_ara'):
+                self.txt_tab1_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #1e1e1e;
+                        color: #ffffff;
+                        border: 1.5px solid #383842;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #00ffcc;
+                        background-color: #252528;
+                    }
+                """)
+
+            # Tab 2 Canlı Sensör Arama Koyu Tema
+            if hasattr(self, 'txt_hata_sensor_ara'):
+                self.txt_hata_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #1e1e1e;
+                        color: #ffffff;
+                        border: 1.5px solid #383842;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #00ffcc;
+                        background-color: #252528;
+                    }
+                """)
+
+            # Tab 3 Canlı Sensör Arama Koyu Tema
+            if hasattr(self, 'txt_tab3_sensor_ara'):
+                self.txt_tab3_sensor_ara.setStyleSheet("""
+                    QLineEdit {
+                        background-color: #1e1e1e;
+                        color: #ffffff;
+                        border: 1.5px solid #383842;
+                        border-radius: 6px;
+                        padding: 4px 10px;
+                        font-size: 10pt;
+                        font-weight: 500;
+                    }
+                    QLineEdit:focus {
+                        border: 1.5px solid #00ffcc;
+                        background-color: #252528;
+                    }
+                """)
 
             # Serbest Tuval ve Kartları Koyu Temaya Güncelle
             if hasattr(self, 'dashboard_container') and hasattr(self.dashboard_container, 'tema_guncelle'):
