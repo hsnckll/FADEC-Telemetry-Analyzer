@@ -1,0 +1,16 @@
+944: act_grupla = None
+945: act_grubu_dagit = None
+948: act_grupla = menu.addAction("🔗 Seçili Grafikleri Grupla (Stack & Sync)")
+950: act_grubu_dagit = menu.addAction("✂️ Grubu Dağıt (Unlink)")
+956: act_odak = menu.addAction(f"🎯 Gruba Odak Bölgesi {odak_text}")
+958: act_odak = menu.addAction(f"🎯 Odak Bölgesi {odak_text}")
+961: act_limit_uygula = menu.addAction("⚙️ Tanımlı Limitleri Göster")
+962: act_limit_sil = menu.addAction("❌ Limit Çizgilerini Kaldır")
+964: act_png = menu.addAction("📷 PNG Olarak Kaydet")
+965: act_reset = menu.addAction("🔄 Otomatik Odaklan (Reset Zoom)")
+967: act_kapat = menu.addAction("🗑️ Bu Grafiği Kapat")
+971: if secilen == act_limit_uygula:
+973: elif act_grupla and secilen == act_grupla:
+975: elif act_grubu_dagit and secilen == act_grubu_dagit:
+977: elif secilen == act_odak:
+979: elif secilen == act_limit_sil:
