@@ -136,7 +136,7 @@ class AIPromptBuilder:
 
                     cakismalar.append({
                         'oncelik': ortak_nokta,  # Çakışma süresi ne kadar uzunsa o kadar kritik
-                        'metin': f"⚠️ **Eşzamanlı Çakışma ({ortak_sure_sn} sn ortak sürdü):** `{b1['kategori']}` devam ederken {fark_sn} sn sonra `{b2['kategori']}` tetiklenmiştir ({b2['start_time']} - {b1['end_time']})."
+                        'metin': f"[KRİTİK] **Eşzamanlı Çakışma ({ortak_sure_sn} sn ortak sürdü):** `{b1['kategori']}` devam ederken {fark_sn} sn sonra `{b2['kategori']}` tetiklenmiştir ({b2['start_time']} - {b1['end_time']})."
                     })
 
                 # --- 2. ZİNCİRLEME TETİKLENME (30 sn içinde peş peşe) ---
@@ -151,7 +151,7 @@ class AIPromptBuilder:
                     if ara_sn <= 30.0:
                         cakismalar.append({
                             'oncelik': 100 - ara_sn,  # Birbirine ne kadar yakın tetiklendiyse o kadar kritik
-                            'metin': f"🔗 **Zincirleme Tetiklenme:** `{b1['kategori']}` bittikten {ara_sn} sn sonra `{b2['kategori']}` başlamıştır."
+                            'metin': f"[İLİŞKİLİ] **Zincirleme Tetiklenme:** `{b1['kategori']}` bittikten {ara_sn} sn sonra `{b2['kategori']}` başlamıştır."
                         })
 
         # Gerçek kritiklik derecesine (çakışma şiddetine) göre büyükten küçüğe sırala
@@ -178,7 +178,7 @@ class AIPromptBuilder:
         ])
         sensor_kolonlari = [
             c for c in self.df.columns
-            if c not in haric_kolonlar and np.issubdtype(self.df[c].dtype, np.number)
+            if c not in haric_kolonlar and pd.api.types.is_numeric_dtype(self.df[c])
         ]
 
         # 2. Sağlıklı anlar maskesi oluştur (Tüm hata kolonlarının 0 olduğu satırlar)
@@ -212,9 +212,9 @@ class AIPromptBuilder:
                 ust = self.limitler[col][1]
 
                 if ust is not None and tum_max > ust:
-                    limit_ihlal_bilgisi = f"🚨 ÜST LİMİT AŞIMI (Limit: {ust}, Ölçülen: {tum_max:.2f})"
+                    limit_ihlal_bilgisi = f"[UYARI] ÜST LİMİT AŞIMI (Limit: {ust}, Ölçülen: {tum_max:.2f})"
                 elif alt is not None and tum_min < alt:
-                    limit_ihlal_bilgisi = f"🚨 ALT LİMİT AŞIMI (Limit: {alt}, Ölçülen: {tum_min:.2f})"
+                    limit_ihlal_bilgisi = f"[UYARI] ALT LİMİT AŞIMI (Limit: {alt}, Ölçülen: {tum_min:.2f})"
 
             sensor_raporlari.append({
                 'sensor': col,
@@ -231,12 +231,13 @@ class AIPromptBuilder:
 
     def prompt_derle(self):
         """
-        Tüm alt analizleri (Hata Blokları, Çapraz Çakışmalar, Sensör Sapmaları)
-        birleştirerek Kıdemli Havacılık Test Mühendisi formatında
-        eksiksiz bir Markdown Teşhis Promptu üretir.
+        @brief Tüm alt analizleri (Hata Blokları, Çapraz Çakışmalar, Sensör Sapmaları)
+               birleştirerek Kıdemli Havacılık Test Mühendisi formatında
+               eksiksiz bir Markdown Teşhis Promptu üretir.
+        @return (str) Derlenmiş analiz prompt metni.
         """
         if self.df.empty:
-            return "⚠️ Analiz edilecek veri seti bulunamadı. Lütfen önce bir CSV oturumu yükleyiniz."
+            return "Analiz edilecek veri seti bulunamadı. Lütfen önce bir CSV oturumu yükleyiniz."
 
         # 1. Önceki yazdığımız alt motorları sırayla çalıştır
         hata_ozetleri = self.hata_bloklarini_tara()
@@ -248,7 +249,7 @@ class AIPromptBuilder:
         toplam_blok_sayisi = sum(len(bloklar) for bloklar in hata_ozetleri.values())
         kategori_sayisi = len(self.hata_kategorileri)
 
-        # Toplam oturum süresini dinamik hesapla, Buralara dikkat et.
+        # Toplam oturum süresini dinamik hesapla
         zaman_kolonu = None
         for col in ['Zaman_Gercek', 'Time', 'zaman', 'time', 'Zaman_Gorsel']:
             if col in self.df.columns:
@@ -289,7 +290,7 @@ class AIPromptBuilder:
         # BÖLÜM 3: Tüm Hata Kategorileri ve Olay Dağılımı
         metin.append("## 2. TÜM HATA KATEGORİLERİ VE ANOMALİ BLOKLARI")
         for hk, bloklar in hata_ozetleri.items():
-            metin.append(f"### 📍 Kategori: `{hk}` ({len(bloklar)} Blok Tespit Edildi)")
+            metin.append(f"### Kategori: `{hk}` ({len(bloklar)} Blok Tespit Edildi)")
             if not bloklar:
                 metin.append("  * Bu kategoride herhangi bir anomali tetiklenmemiştir (Nominal).")
             else:
@@ -297,7 +298,7 @@ class AIPromptBuilder:
                 gosterilecek_bloklar = bloklar[:3]
                 for b in gosterilecek_bloklar:
                     metin.append(
-                        f"  * **Blok {b['blok_no']}:** {b['start_time']} ➔ {b['end_time']} "
+                        f"  * **Blok {b['blok_no']}:** {b['start_time']} -> {b['end_time']} "
                         f"(Süre: {b['sure_sn']} sn | {b['nokta_sayisi']} Veri Noktası)"
                     )
                 if len(bloklar) > 3:

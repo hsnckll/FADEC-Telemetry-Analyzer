@@ -128,7 +128,7 @@ class PDFRaporMotoru:
 
                 if b_sure > kat_en_uzun_sure:
                     kat_en_uzun_sure = b_sure
-                    kat_en_uzun_zaman = f"{t_bas} ➔ {t_bit}"
+                    kat_en_uzun_zaman = f"{t_bas} -> {t_bit}"
 
             self.kategori_raporlari.append({
                 'kategori': kat,
@@ -174,7 +174,7 @@ class PDFRaporMotoru:
         else:
             sensor_kolonlari = [
                 c for c in self.df.columns
-                if c not in haric_kolonlar and np.issubdtype(self.df[c].dtype, np.number)
+                if c not in haric_kolonlar and pd.api.types.is_numeric_dtype(self.df[c])
             ]
 
         # Sağlıklı ve Arızalı Veri Parçaları
@@ -546,7 +546,7 @@ class PDFRaporMotoru:
 
             <!-- Oturum Detay Özeti -->
             <div class="callout">
-                <b>📌 Uçuş / Test Oturumu Bilgisi:</b> Toplam <b>{self.metrikler['toplam_satir']:,}</b> veri noktası incelenmiştir. 
+                <b>Uçuş / Test Oturumu Bilgisi:</b> Toplam <b>{self.metrikler['toplam_satir']:,}</b> veri noktası incelenmiştir. 
                 Test <b>{self.metrikler['baslangic_zamani']}</b> ile <b>{self.metrikler['bitis_zamani']}</b> aralığında gerçekleşmiştir. 
                 Test süresinin <b>%{self.metrikler['arizali_yuzde']:.2f}'si ({self.metrikler['arizali_sure_sn']:.1f} saniye)</b> anomali/arıza durumu altında geçmiştir.
             </div>
@@ -565,7 +565,7 @@ class PDFRaporMotoru:
                 <tbody>
                     <tr>
                         <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center;"><b>{self.en_uzun_blok.get('kategori', '-')}</b></td>
-                        <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center;">{self.en_uzun_blok.get('start_time', '-')} ➔ {self.en_uzun_blok.get('end_time', '-')}</td>
+                        <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center;">{self.en_uzun_blok.get('start_time', '-')} -> {self.en_uzun_blok.get('end_time', '-')}</td>
                         <td style="border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center; font-weight: bold; color: #dc2626;">{self.en_uzun_blok.get('sure_sn', 0.0):.1f} sn</td>
                         <td style="border: 1px solid #cbd5e1; padding: 4px 6px; color: #0369a1; font-weight: bold; text-align: center;">{self.metrikler['kriz_en_cok_sapan_sensor']}</td>
                     </tr>

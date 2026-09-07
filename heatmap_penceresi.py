@@ -85,7 +85,7 @@ class Ui_Dialog(object):
         self.btn_uygula.setText(_translate("Dialog", "Uygula"))
         self.btn_tumunuGoster.setText(_translate("Dialog", "Tümünü Göster"))
         self.btn_silme.setText(_translate("Dialog", "Tümünü Sil"))
-        self.btn_pngKaydet.setText(_translate("Dialog", "📷 PNG Kaydet"))
+        self.btn_pngKaydet.setText(_translate("Dialog", "PNG Olarak Kaydet"))
 
 # Geriye dönük uyumluluk alias
 Ui_HeatmapDialog = Ui_Dialog

@@ -137,17 +137,25 @@ class DashboardTuval(QtWidgets.QWidget):
         super().mouseReleaseEvent(event)
 
     def secimi_temizle(self):
-        """ Dashboard üzerindeki tüm seçili grafikleri temizler. """
+        """
+        @brief Tuval üzerindeki tüm seçili kartların seçim durumunu temizler.
+        """
         for child in self.findChildren(SensorGrafikKarti):
             if getattr(child, 'is_selected', False):
                 child.secimi_ayarla(False)
 
     def secili_grafikler(self):
-        """ Seçili olan tüm grafikleri liste olarak döner. """
+        """
+        @brief Tuval üzerinde kullanıcı tarafından seçilmiş aktif grafik kartlarını döner.
+        @return (list) Seçili SensorGrafikKarti nesneleri listesi.
+        """
         return [c for c in self.findChildren(SensorGrafikKarti) if getattr(c, 'is_selected', False)]
 
     def grafikleri_grupla(self):
-        """ Seçili grafikleri alt alta tek bir pano (stack) olarak dizer ve eksenlerini (XLink) senkronize eder. """
+        """
+        @brief Seçili grafikleri düşey eksende alt alta dizer ve X eksenlerini (XLink) kilitler.
+               Böylece zoom ve kaydırma işlemleri grup üyeleri arasında senkronize çalışır.
+        """
         secililer = self.secili_grafikler()
         if len(secililer) <= 1:
             return
@@ -167,7 +175,7 @@ class DashboardTuval(QtWidgets.QWidget):
             kart.grup_id = yeni_grup_id
             # Genişliği ve X'i eşitle, tam altına yerleştir
             kart.setGeometry(hedef_x, mevcut_y, hedef_w, kart.height())
-            mevcut_y += kart.height() - 1  # İnce, şık bir bitişiklik için -1 px
+            mevcut_y += kart.height() - 1  # Bitişik yerleşim için 1px kenarlık payı
             
             # X Eksenlerini birbirine bağla (Sync Zoom/Pan)
             if kart != ref_kart:
@@ -177,7 +185,10 @@ class DashboardTuval(QtWidgets.QWidget):
             kart.tuvali_guncelle(sadece_buyut=False)
             
     def grubu_dagit(self, grup_id):
-        """ Belirtilen gruba ait tüm grafiklerin bağını ve kilidini (XLink) koparır. """
+        """
+        @brief Belirtilen gruba ait tüm grafiklerin eksen kilidini (XLink) ve grup bağını çözer.
+        @param grup_id (str) Dağıtılacak grubun benzersiz kimlik kodu.
+        """
         if not grup_id:
             return
         for child in self.findChildren(SensorGrafikKarti):
@@ -186,7 +197,10 @@ class DashboardTuval(QtWidgets.QWidget):
                 child.plot_widget.setXLink(None)
 
     def grubu_yeniden_diz(self, grup_id):
-        """ Gruptaki bir grafiğin boyutu değiştiğinde üst üste binmelerini önlemek için yeniden hizalar. """
+        """
+        @brief Gruptaki bir kartın boyutu değiştiğinde çakışmaları önlemek için kartları düşeyde yeniden hizalar.
+        @param grup_id (str) Yeniden düzenlenecek grubun kimlik kodu.
+        """
         if not grup_id:
             return
             
@@ -208,9 +222,8 @@ class DashboardTuval(QtWidgets.QWidget):
 
 class SensorGrafikViewBox(pg.ViewBox):
     """
-    @brief PyQtGraph'ın dahili tıklama ve sürükleme motorunu kullanan özel ViewBox.
-    Sağ tıkla keskinleştirme / ölçekleme / sürükleme yapıldığında menü ASLA tetiklenmez.
-    Yalnızca grafiğe tek tıklandığında menüyü açar.
+    @brief PyQtGraph dahili fare etkileşim motorunu özelleştiren ViewBox sınıfı.
+    Sağ tıkla ölçekleme ve kaydırma yapılırken bağlam menüsünün istemsiz tetiklenmesini önler.
     """
 
     def __init__(self, kart=None, *args, **kwargs):
@@ -224,12 +237,22 @@ class SensorGrafikViewBox(pg.ViewBox):
 
 
 class ZamanEkseniItem(pg.AxisItem):
+    """
+    @brief Sayısal veri indekslerini insan tarafından okunabilir tarih-saat formatına dönüştüren eksen sınıfı.
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.baslangic_zamani = None
-        self.dt_saniye = 0.1  # Varsayılan 100ms
+        self.dt_saniye = 0.1
 
     def tickStrings(self, values, scale, spacing):
+        """
+        @brief Eksen üzerinde gösterilecek sayısal değerleri dinamik zaman etiketlerine dönüştürür.
+        @param values (list) Eksen indeks değerleri.
+        @param scale (float) Eksen ölçek katsayısı.
+        @param spacing (float) İki ızgara çizgisi arasındaki mesafe.
+        @return (list of str) Formatlanmış zaman metinleri.
+        """
         if self.baslangic_zamani is None:
             return super().tickStrings(values, scale, spacing)
 
@@ -265,11 +288,11 @@ class ZamanEkseniItem(pg.AxisItem):
 
 class SensorGrafikKarti(QtWidgets.QFrame):
     """
-    @brief Tek bir sensörün grafiğini, limitlerini ve sağ tık kontrollerini yöneten modüler kart.
-    (C#'taki UserControl mantığı - 144 FPS Akıcı Performans)
+    @brief Tek bir sensörün zaman serisi veya X-Y saçılım grafiğini, limit çizgilerini
+           ve etkileşimli kontrollerini barındıran modüler grafik kartı bileşeni.
     """
 
-    # Kapatıldığında ana pencereye haber veren sinyal (C#'taki Event)
+    ## Kart kapatıldığında ebeveyn konteynere bildirilen sinyal
     kapandi_signal = QtCore.pyqtSignal(object)
 
     def __init__(self, sensor_adi, df, parent=None, limitler=None, cizgi_rengi="#00ffcc", tema="dark", grafik_tipi="line", x_sensor_adi=None):
@@ -336,7 +359,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
 
         layout_header.addStretch()
 
-        btn_kapat = QtWidgets.QPushButton("✕")
+        btn_kapat = QtWidgets.QPushButton("X")
         btn_kapat.setFixedSize(24, 24)
         btn_kapat.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         btn_kapat.setStyleSheet("""
@@ -511,7 +534,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             ham_x = self.window_start_pos.x() + delta.x()
             ham_y = self.window_start_pos.y() + delta.y()
 
-            # 🔥 25px Manyetik Izgara Hizalaması (Ana Kart İçin)
+            # 25px Manyetik Izgara Hizalamasi (Ana Kart Icin)
             snap_x = max(0, round(ham_x / 25) * 25)
             snap_y = max(0, round(ham_y / 25) * 25)
             
@@ -530,20 +553,27 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 self.tuvali_guncelle(sadece_buyut=True)
 
     def resize_basildi(self, event):
-        """ Boyutlandırma tutamacına basıldığında başlangıç boyutunu kaydeder. """
+        """
+        @brief Boyutlandırma tutamacına basıldığında başlangıç boyutunu kaydeder.
+        @param event (QMouseEvent) Fare basma olayı.
+        """
         if event.button() == QtCore.Qt.LeftButton:
             self.raise_()
             self.resize_drag_start_pos = event.globalPos()
             self.window_start_size = self.size()
 
     def resize_suruklendi(self, event):
-        """ Tutamaç sürüklendikçe kartı 25px ızgara adımlarıyla büyütüp küçültür. Grup varsa tüm grubu eşit boyutlandırır. """
+        """
+        @brief Tutamaç sürüklendikçe kartı 25px ızgara adımlarıyla boyutlandırır.
+               Grup bağlıysa gruptaki tüm kartları eşit boyutlandırır ve yeniden dizer.
+        @param event (QMouseEvent) Fare sürükleme olayı.
+        """
         if event.buttons() == QtCore.Qt.LeftButton and hasattr(self, 'resize_drag_start_pos'):
             delta = event.globalPos() - self.resize_drag_start_pos
             ham_w = self.window_start_size.width() + delta.x()
             ham_h = self.window_start_size.height() + delta.y()
 
-            # 🔥 25px Boyutlandırma Hizalaması
+            # 25px Boyutlandirma Hizalamasi
             snap_w = max(self.minimumWidth(), round(ham_w / 25) * 25)
             snap_h = max(self.minimumHeight(), round(ham_h / 25) * 25)
 
@@ -875,17 +905,20 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                             child.crosshair_gizle()
 
     # ==========================================================================
-    # 🖱️ AKILLI SAĞ TIK MENÜSÜ (Sürükleme anında açılmaz, tek tıkta açılır)
+    # SAG TIK KONTROL MENUSU
     # ==========================================================================
     def contextMenuEvent(self, event):
         """
-        @brief Qt'nin varsayılan contextMenuEvent tetiklemesini engeller (Sürükleme sonrası açılmayı önler).
+        @brief Qt'nin varsayılan contextMenuEvent tetiklemesini engeller.
+               Kart sürükleme bırakıldığında istemsiz menü açılmasını önler.
+        @param event (QContextMenuEvent) Olay nesnesi.
         """
         event.ignore()
 
     def menu_ac(self, global_pos=None):
         """
-        @brief Grafiğin profesyonel açılır kontrol menüsünü görüntüler.
+        @brief Sensör grafik kartı için sağ tık kontrol menüsünü oluşturur ve görüntüler.
+        @param global_pos (QPoint) Menünün açılacağı global ekran koordinatı.
         """
         if global_pos is None:
             global_pos = QtGui.QCursor.pos()
@@ -949,31 +982,34 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         act_grubu_dagit = None
         
         if secili_sayisi > 1 and getattr(self, 'is_selected', False):
-            act_grupla = menu.addAction("🔗 Seçili Grafikleri Grupla (Stack & Sync)")
+            act_grupla = menu.addAction("Seçili Grafikleri Grupla")
         if getattr(self, 'grup_id', None) is not None:
-            act_grubu_dagit = menu.addAction("✂️ Grubu Dağıt (Unlink)")
+            act_grubu_dagit = menu.addAction("Grubu Dağıt")
             menu.addSeparator()
 
         odak_aktif = getattr(self, 'odak_bolgesi', None) is not None
         odak_text = "Kapat" if odak_aktif else "Aç"
         if getattr(self, 'grup_id', None) is not None:
-            act_odak = menu.addAction(f"🎯 Gruba Odak Bölgesi {odak_text}")
+            act_odak = menu.addAction(f"Gruba Odak Bölgesi {odak_text}")
         else:
-            act_odak = menu.addAction(f"🎯 Odak Bölgesi {odak_text}")
+            act_odak = menu.addAction(f"Odak Bölgesi {odak_text}")
         menu.addSeparator()
 
-        act_limit_uygula = menu.addAction("⚙️ Tanımlı Limitleri Göster")
-        act_limit_sil = menu.addAction("❌ Limit Çizgilerini Kaldır")
+        act_limit_uygula = menu.addAction("Tanımlı Limitleri Göster")
+        act_limit_sil = menu.addAction("Limit Çizgilerini Kaldır")
         menu.addSeparator()
-        act_png = menu.addAction("📷 PNG Olarak Kaydet")
-        act_reset = menu.addAction("🔄 Otomatik Odaklan (Reset Zoom)")
+        act_png = menu.addAction("PNG Olarak Dışa Aktar")
+        act_reset = menu.addAction("Zoom Sıfırla")
         menu.addSeparator()
-        act_kapat = menu.addAction("🗑️ Bu Grafiği Kapat")
+        act_kapat = menu.addAction("Grafiği Kapat")
 
         secilen = menu.exec_(global_pos)
 
         def grup_aksiyonu(func):
-            """ Seçilen işlemi (limit göster/gizle, reset zoom vb.) gruptaki tüm grafiklere uygular. """
+            """
+            @brief Seçilen işlemi (limit, zoom, kapatma vb.) gruptaki tüm kartlara uygular.
+            @param func Uygulanacak aksiyon fonksiyonu.
+            """
             if getattr(self, 'grup_id', None) is not None:
                 grup = [c for c in tuval.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == self.grup_id]
                 for kart in grup:
@@ -992,7 +1028,7 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         elif secilen == act_limit_sil:
             grup_aksiyonu(lambda k: k.limit_cizgilerini_temizle())
         elif secilen == act_png:
-            self.png_kaydet()  # PNG kaydetme sadece tıklanan grafik için mantıklıdır (çoklu diyalog açmamak için)
+            self.png_kaydet()
         elif secilen == act_reset:
             grup_aksiyonu(lambda k: k.plot_widget.plotItem.vb.autoRange(padding=0.02))
         elif secilen == act_kapat:
@@ -1144,10 +1180,14 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 self.crosshair_yazi.fill = pg.mkBrush(None)
                 self.crosshair_yazi.border = pg.mkPen(None)
     # ==========================================================================
-    # 🎯 ODAK BÖLGESİ (REGION OF INTEREST - ROI) YÖNETİMİ
+    # ODAK BOLGESI (REGION OF INTEREST - ROI) YONETIMI
     # ==========================================================================
     def odak_bolgesi_tetikle(self, aktif):
-        """ Grup varsa hepsine, yoksa sadece kendine odak bölgesi (LinearRegionItem) uygular """
+        """
+        @brief Odak bölgesini (LinearRegionItem) etkinleştirir veya kaldırır.
+               Kart bir gruba bağlıysa gruptaki tüm kartları eşzamanlı günceller.
+        @param aktif (bool) True ise odak bölgesi açılır, False ise kaldırılır.
+        """
         if getattr(self, 'grup_id', None) is not None:
             tuval = self.parent()
             grup = [c for c in tuval.findChildren(SensorGrafikKarti) if getattr(c, 'grup_id', None) == self.grup_id]
@@ -1170,6 +1210,12 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             self.odak_bolgesi_ayarla(aktif, x_min, x_max)
 
     def odak_bolgesi_ayarla(self, aktif, x_min=0, x_max=100):
+        """
+        @brief Grafik üzerinde LinearRegionItem nesnesini oluşturur, görsel stilini ve sinyallerini bağlar.
+        @param aktif (bool) Bölgenin açık/kapalı durumu.
+        @param x_min (float/int) Başlangıç X koordinatı.
+        @param x_max (float/int) Bitiş X koordinatı.
+        """
         if aktif:
             if getattr(self, 'odak_bolgesi', None) is None:
                 self.odak_bolgesi = pg.LinearRegionItem([x_min, x_max])
@@ -1193,13 +1239,19 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 self.odak_bolgesi = None
 
     def grafik_cift_tiklandi(self, event):
-        """ Grafiğe çift tıklandığında odak bölgesini tam tıklanılan X koordinatına ışınlar """
+        """
+        @brief Grafiğe çift tıklandığında odak bölgesini tıklanılan X koordinatına taşır.
+        @param event (QGraphicsSceneMouseEvent) Tıklama olayı.
+        """
         if event.double() and getattr(self, 'odak_bolgesi', None) is not None:
             pos = self.plot_widget.plotItem.vb.mapSceneToView(event.scenePos())
             self.odak_bolgesini_fareye_tasi(pos.x())
             
     def odak_bolgesini_fareye_tasi(self, hedef_x=None):
-        """ Kısayol (F tuşu) veya çift tıklama ile çağırıldığında odak bölgesinin genişliğini koruyarak hedef X'e ışınlar """
+        """
+        @brief Odak bölgesinin genişliğini bozmadan hedeflenen X eksenine taşır.
+        @param hedef_x (float, opsiyonel) Taşınacak merkez X koordinatı. Belirtilmezse son fare konumu kullanılır.
+        """
         if getattr(self, 'odak_bolgesi', None) is None:
             return
             
@@ -1215,6 +1267,10 @@ class SensorGrafikKarti(QtWidgets.QFrame):
         self.odak_bolgesi.setRegion([yeni_bas, yeni_bit])
 
     def odak_degisti_senkronize_et(self, region_item):
+        """
+        @brief Odak bölgesi sınırları kullanıcı tarafından değiştirildiğinde grup üyelerine aktarır.
+        @param region_item (LinearRegionItem) Değişen bölge nesnesi.
+        """
         if getattr(self, '_odak_guncelleniyor', False):
             return
             

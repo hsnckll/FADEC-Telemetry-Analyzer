@@ -115,7 +115,7 @@ class Ui_Dialog(object):
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "FADEC - Veri Dosyalarını Seç"))
-        self.lbl_baslik.setText(_translate("Dialog", "📁 Telemetri ve Olay Kaydı Yükleme"))
+        self.lbl_baslik.setText(_translate("Dialog", "Telemetri ve Olay Kaydı Yükleme"))
         self.lbl_aciklama.setText(_translate("Dialog", "Analiz etmek istediğiniz Data Record (.csv/.xlsx) ve Event Record dosyalarını seçiniz."))
         self.lbl_data.setText(_translate("Dialog", "Data Record:"))
         self.btn_data_sec.setText(_translate("Dialog", "Gözat..."))

@@ -419,9 +419,9 @@ class Ui_MainWindow(object):
         self.btn_genel_tumunu_silme.setText(_translate("MainWindow", "Tümünü Sil"))
         self.btn_genel_png.setText(_translate("MainWindow", "PNG Kaydet"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), _translate("MainWindow", "Genel Hata Analizi"))
-        self.btn_dashboard_grafik_ekle.setText(_translate("MainWindow", "➕ Grafik Ekle"))
-        self.btn_dashboard_diz_karo.setText(_translate("MainWindow", "⊞ Yan Yana Diz"))
-        self.btn_dashboard_diz_basamak.setText(_translate("MainWindow", "⧉ Basamakla"))
-        self.btn_dashboard_temizle.setText(_translate("MainWindow", "🗑️ Tümünü Kapat"))
+        self.btn_dashboard_grafik_ekle.setText(_translate("MainWindow", "Grafik Ekle"))
+        self.btn_dashboard_diz_karo.setText(_translate("MainWindow", "Yan Yana Diz"))
+        self.btn_dashboard_diz_basamak.setText(_translate("MainWindow", "Basamakla"))
+        self.btn_dashboard_temizle.setText(_translate("MainWindow", "Tümünü Kapat"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_4), _translate("MainWindow", "Serbest Çalışma Alanı"))
 from pyqtgraph import PlotWidget

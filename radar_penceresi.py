@@ -32,7 +32,7 @@ class Ui_Dialog(object):
         self.layout_card.setContentsMargins(8, 6, 8, 6)
         self.layout_card.setSpacing(2)
 
-        self.lbl_baslik_kucuk = QtWidgets.QLabel("🏷️ İNCELENEN HATA BLOĞU & ZAMAN ARALIĞI", self.card_info)
+        self.lbl_baslik_kucuk = QtWidgets.QLabel("İNCELENEN HATA BLOĞU & ZAMAN ARALIĞI", self.card_info)
         font_kucuk = QtGui.QFont()
         font_kucuk.setPointSize(8)
         font_kucuk.setBold(True)
@@ -77,7 +77,7 @@ class Ui_Dialog(object):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Kök Neden ve Sensör Sapma Analizi (Radar - Z-Score)"))
         self.lbl_HataAraligi.setText(_translate("Dialog", "Hata Aralığı Yükleniyor..."))
-        self.btn_pngKaydetRadar.setText(_translate("Dialog", "📷 PNG Kaydet"))
+        self.btn_pngKaydetRadar.setText(_translate("Dialog", "PNG Olarak Kaydet"))
 
 # Geriye dönük uyumluluk alias
 Ui_RadarDialog = Ui_Dialog

@@ -75,10 +75,10 @@ class Ui_Dialog(object):
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "FADEC - Limit Kontrolü İçin Sensör Seçimi"))
-        self.lbl_baslik.setText(_translate("Dialog", "⚙️ Limit Aşımı Kontrolü"))
+        self.lbl_baslik.setText(_translate("Dialog", "Limit Aşımı Kontrolü"))
         self.lbl_aciklama.setText(_translate("Dialog", "Grafikte limit çizgilerini görmek istediğiniz sensörleri işaretleyiniz."))
-        self.btn_limitUygula.setText(_translate("Dialog", "✅ Değişiklikleri Uygula"))
-        self.btn_limitKaldir.setText(_translate("Dialog", "❌ Limitleri Kaldır"))
+        self.btn_limitUygula.setText(_translate("Dialog", "Değişiklikleri Uygula"))
+        self.btn_limitKaldir.setText(_translate("Dialog", "Limitleri Kaldır"))
 
 # Geriye dönük uyumluluk alias
 Ui_MinMaxDialog = Ui_Dialog

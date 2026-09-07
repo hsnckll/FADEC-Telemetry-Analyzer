@@ -612,7 +612,7 @@ class AIPromptPenceresi(QtWidgets.QDialog):
         # Alt Butonlar Layout
         btn_layout = QtWidgets.QHBoxLayout()
 
-        self.btn_kopyala = QtWidgets.QPushButton("📋 Panoya Kopyala")
+        self.btn_kopyala = QtWidgets.QPushButton("Panoya Kopyala")
         self.btn_kopyala.setMinimumHeight(44)
         self.btn_kopyala.setCursor(QtCore.Qt.PointingHandCursor)
 
@@ -640,11 +640,9 @@ class AIPromptPenceresi(QtWidgets.QDialog):
                 QTextEdit {
                     background-color: #ffffff;
                     color: #0f172a;
-                    border: 1.5px solid #cbd5e1;
+                    border: 1px solid #cbd5e1;
                     border-radius: 6px;
-                    padding: 12px;
-                    selection-background-color: #0284c7;
-                    selection-color: #ffffff;
+                    padding: 8px;
                 }
             """)
             self.btn_kopyala.setStyleSheet("""
@@ -654,41 +652,37 @@ class AIPromptPenceresi(QtWidgets.QDialog):
                     font-weight: bold;
                     font-size: 11pt;
                     border-radius: 6px;
-                    border: 1px solid #0284c7;
                     padding: 6px 14px;
+                    border: 1px solid #0284c7;
                 }
                 QPushButton:hover {
                     background-color: #0369a1;
-                    border-color: #0369a1;
                 }
             """)
             self.btn_kapat.setStyleSheet("""
                 QPushButton {
-                    background-color: #ffffff;
+                    background-color: #e2e8f0;
                     color: #334155;
                     font-weight: bold;
                     font-size: 11pt;
                     border-radius: 6px;
-                    border: 1.5px solid #cbd5e1;
                     padding: 6px 14px;
+                    border: 1px solid #cbd5e1;
                 }
                 QPushButton:hover {
-                    background-color: #f1f5f9;
-                    color: #0f172a;
+                    background-color: #cbd5e1;
                 }
             """)
         else:
-            self.setStyleSheet("QDialog { background-color: #1e1e1e; }")
+            self.setStyleSheet("QDialog { background-color: #1e1e24; }")
             self.lbl_bilgi.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00ffcc; background: transparent;")
             self.txt_prompt.setStyleSheet("""
                 QTextEdit {
-                    background-color: #181818;
+                    background-color: #121214;
                     color: #e0e0e0;
-                    border: 1px solid #333333;
+                    border: 1px solid #383842;
                     border-radius: 6px;
-                    padding: 12px;
-                    selection-background-color: #00ffcc;
-                    selection-color: #000000;
+                    padding: 8px;
                 }
             """)
             self.btn_kopyala.setStyleSheet("""
@@ -699,20 +693,21 @@ class AIPromptPenceresi(QtWidgets.QDialog):
                     font-size: 11pt;
                     border-radius: 6px;
                     padding: 6px 14px;
+                    border: 1px solid #00ffcc;
                 }
                 QPushButton:hover {
-                    background-color: #00ccaa;
+                    background-color: #00cca3;
                 }
             """)
             self.btn_kapat.setStyleSheet("""
                 QPushButton {
-                    background-color: #2b2b2b;
-                    color: #ffffff;
+                    background-color: #2b2b36;
+                    color: #e0e0e0;
                     font-weight: bold;
                     font-size: 11pt;
                     border-radius: 6px;
-                    border: 1px solid #444444;
                     padding: 6px 14px;
+                    border: 1px solid #383842;
                 }
                 QPushButton:hover {
                     background-color: #383838;
@@ -720,8 +715,11 @@ class AIPromptPenceresi(QtWidgets.QDialog):
             """)
 
     def panoya_kopyala(self):
+        """
+        @brief Metin kutusundaki veriyi sistem panosuna (clipboard) aktarır.
+        """
         QtWidgets.QApplication.clipboard().setText(self.txt_prompt.toPlainText())
-        self.btn_kopyala.setText("✅ Kopyalandı!")
+        self.btn_kopyala.setText("Kopyalandı")
         self.btn_kopyala.setStyleSheet("""
             QPushButton {
                 background-color: #16a34a;
@@ -737,7 +735,10 @@ class AIPromptPenceresi(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(2500, self.kopyala_reset)
 
     def kopyala_reset(self):
-        self.btn_kopyala.setText("📋 Panoya Kopyala")
+        """
+        @brief Kopyalama butonunun metnini ve stilini varsayılana döndürür.
+        """
+        self.btn_kopyala.setText("Panoya Kopyala")
         self.tema_uygula()
 
 
@@ -893,7 +894,7 @@ def oturum_dosyalarini_dogrula(parent_widget, data_yolu, event_yolu=None):
             dt_metin = f"~{dt_data:.1f} ms" if dt_data is not None else "yüksek frekans"
             QtWidgets.QMessageBox.critical(
                 parent_widget, "Geçersiz Data Log Dosyası",
-                f"❌ Seçtiğiniz Data Log dosyasının arıza kaydı (Event Log: {dt_metin}, {n_data} kolon) olduğu tespit edildi.\n\n"
+                f"Seçtiğiniz Data Log dosyasının arıza kaydı (Event Log: {dt_metin}, {n_data} kolon) olduğu tespit edildi.\n\n"
                 f"Lütfen geçerli bir Sensör Ölçüm (Data Log: ~100 ms) dosyası seçiniz."
             )
             return False
@@ -902,11 +903,11 @@ def oturum_dosyalarini_dogrula(parent_widget, data_yolu, event_yolu=None):
     # 3. Hem Data hem Event seçilmişse Çapraz Eşleşme Analizi
     tip_event, dt_event, n_event = dosya_turu_ve_frekans_analiz_et(event_yolu)
 
-    # Senaryo A: İki dosya da DATA ise (Kullanıcının yaptığı test senaryosu)
+    # Senaryo A: İki dosya da DATA ise
     if tip_data == 'DATA' and tip_event == 'DATA':
         QtWidgets.QMessageBox.critical(
             parent_widget, "Geçersiz Dosya Eşleşmesi",
-            f"❌ Seçilen iki dosya da 'Sensör Ölçümü' (Data Log) dosyasıdır!\n\n"
+            f"Seçilen iki dosya da 'Sensör Ölçümü' (Data Log) dosyasıdır.\n\n"
             f"Lütfen 1 adet Data Log ve 1 adet Event Log dosyası seçiniz."
         )
         return False
@@ -915,7 +916,7 @@ def oturum_dosyalarini_dogrula(parent_widget, data_yolu, event_yolu=None):
     if tip_data == 'EVENT' and tip_event == 'EVENT':
         QtWidgets.QMessageBox.critical(
             parent_widget, "Geçersiz Dosya Eşleşmesi",
-            f"❌ Seçilen iki dosya da 'Arıza Kaydı' (Event Log) dosyasıdır!\n\n"
+            f"Seçilen iki dosya da 'Arıza Kaydı' (Event Log) dosyasıdır.\n\n"
             f"• 1. Dosya: Event Log ({n_data} arıza kolonu)\n"
             f"• 2. Dosya: Event Log ({n_event} arıza kolonu)\n\n"
             f"Lütfen 1 adet Data Log ve 1 adet Event Log dosyası seçiniz."
@@ -928,7 +929,7 @@ def oturum_dosyalarini_dogrula(parent_widget, data_yolu, event_yolu=None):
         dt_e_metin = f"~{dt_event:.1f} ms" if dt_event is not None else "100 ms"
         QtWidgets.QMessageBox.critical(
             parent_widget, "Dosyalar Ters Seçildi",
-            f"❌ Dosyaların yerleri ters yerleştirilmiş!\n\n"
+            f"Dosyaların yerleri ters yerleştirilmiş.\n\n"
             f"• Data Kutusunda: Event Log ({dt_d_metin}, {n_data} arıza kolonu)\n"
             f"• Event Kutusunda: Data Log ({dt_e_metin}, {n_event} sensör kolonu)\n\n"
             f"Lütfen dosyaları doğru kutulara yerleştiriniz."
@@ -1472,10 +1473,10 @@ class YuklemeThread(QtCore.QThread):
                         pct = int((b_read / total_bytes) * 100)
                         mb_read = b_read / (1024 * 1024)
                         dosya_adi = os.path.basename(self.data_yolu)
-                        self.progress_signal.emit(pct, f"📁 {dosya_adi} okunuyor... ({mb_read:.1f} MB / {mb_total:.1f} MB)")
+                        self.progress_signal.emit(pct, f"{dosya_adi} okunuyor... ({mb_read:.1f} MB / {mb_total:.1f} MB)")
                 df_data = pd.concat(data_chunks, ignore_index=True)
             else:
-                self.progress_signal.emit(30, "📁 Data Excel okunuyor...")
+                self.progress_signal.emit(30, "Data Excel okunuyor...")
                 df_data = pd.read_excel(self.data_yolu)
 
             # 2. EVENT DOSYASI OKUMA
@@ -1489,14 +1490,14 @@ class YuklemeThread(QtCore.QThread):
                         pct = min(int((b_read / total_bytes) * 100), 95)
                         mb_read = b_read / (1024 * 1024)
                         dosya_adi = os.path.basename(self.event_yolu)
-                        self.progress_signal.emit(pct, f"⚡ {dosya_adi} okunuyor... ({mb_read:.1f} MB / {mb_total:.1f} MB)")
+                        self.progress_signal.emit(pct, f"{dosya_adi} okunuyor... ({mb_read:.1f} MB / {mb_total:.1f} MB)")
                 df_event = pd.concat(event_chunks, ignore_index=True)
             else:
-                self.progress_signal.emit(70, "⚡ Event Excel okunuyor...")
+                self.progress_signal.emit(70, "Event Excel okunuyor...")
                 df_event = pd.read_excel(self.event_yolu)
 
             # 3. ZAMAN EŞLEŞTİRME VE ENTEGRASYON
-            self.progress_signal.emit(96, "🔄 Zaman İndeksleri ve Hata Blokları Eşleştiriliyor...")
+            self.progress_signal.emit(96, "Zaman İndeksleri ve Hata Blokları Eşleştiriliyor...")
 
             data_zaman_kolonu = df_data.columns[0]
             event_zaman_kolonu = df_event.columns[0]
@@ -1588,7 +1589,7 @@ class YuklemeThread(QtCore.QThread):
             else:
                 df_data["Zaman_Gorsel"] = df_data["Zaman_Index"].astype(str)
 
-            self.progress_signal.emit(100, "✨ Yükleme Tamamlandı!")
+            self.progress_signal.emit(100, "Yükleme tamamlandı.")
             self.finished_signal.emit(df_data, hata_kolonlari)
 
         except Exception as e:
@@ -2296,7 +2297,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             layout_kapsayici.setContentsMargins(0, 0, 0, 0)
             layout_kapsayici.setSpacing(0)
 
-            self.lbl_hata_tablo_baslik = QtWidgets.QLabel("📌 Hata Bloğu Seçilmedi (Soldaki listeden bir blok seçiniz)")
+            self.lbl_hata_tablo_baslik = QtWidgets.QLabel("Hata Bloğu Seçilmedi (Soldaki listeden bir blok seçiniz)")
             self.lbl_hata_tablo_baslik.setStyleSheet("""
                 QLabel {
                     background-color: #232328;
@@ -2953,17 +2954,17 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         secili_item = self.HataBlok_List.currentItem()
         blok_metni = secili_item.text() if secili_item else f"Blok {secili + 1}"
 
-        # 🎯 ComboBox'tan seçili olan Hata Türünü al (Örn: Hata_Durumu3)
+        # ComboBox üzerinden seçili olan hata kategorisini al (Örn: Hata_Durumu3)
         secili_kategori = self.cmb_hataBloklari.currentText() if hasattr(self,
                                                                          'cmb_hataBloklari') and self.cmb_hataBloklari.currentText() else "Genel Hata"
 
         bas, bit = self.hataBloklarıİndeksleri[secili]
         blok_verisi = self.df.iloc[bas:bit]
 
-        # 🔥 Tablo üstündeki başlık rozetini dinamik olarak güncelle
+        # Tablo üstündeki başlık rozetini dinamik olarak güncelle
         if hasattr(self, 'lbl_hata_tablo_baslik'):
             toplam_satir = len(blok_verisi)
-            self.lbl_hata_tablo_baslik.setText(f" Hata Türü: {secili_kategori}   |   {blok_metni}   |   {toplam_satir:,} Satır")
+            self.lbl_hata_tablo_baslik.setText(f"Hata Türü: {secili_kategori}   |   {blok_metni}   |   {toplam_satir:,} Satır")
 
         hata_kats = getattr(self, 'hata_kategorileri', [])
         model = PandasModel(blok_verisi, hata_kategorileri=hata_kats)
@@ -4772,7 +4773,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
 
     # ==========================================================================
-    # 🌟 SERBEST ÇALIŞMA ALANI (DASHBOARD) YÖNETİCİSİ
+    # SERBEST CALISMA ALANI (DASHBOARD) YONETIMI
     # ==========================================================================
 
     def dashboard_grafik_ekle_dialog(self):
@@ -4932,23 +4933,27 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         kart.raise_()
 
     def dashboard_tumunu_temizle(self):
-        """ Serbest Çalışma Alanındaki tüm grafikleri siler. """
+        """
+        @brief Serbest Çalışma Alanı tuvali üzerindeki tüm aktif sensör grafik kartlarını bellekten ve ekrandan temizler.
+        """
         if hasattr(self, 'dashboard_container'):
             for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
                 kart.setParent(None)
                 kart.deleteLater()
 
     def dashboard_yan_yana_diz(self):
-        """ Kartları tuval üzerinde 2 sütunlu düzenli bir ızgara şeklinde dizer. """
+        """
+        @brief Açık kartları tuval üzerinde 2 sütunlu düzenli bir matris ızgarası şeklinde hizalar.
+        """
         if not hasattr(self, 'dashboard_container'):
             return
 
         kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
         for i, kart in enumerate(kartlar):
-            satir = i // 2  # Her satırda 2 grafik
+            satir = i // 2
             sutun = i % 2
 
-            # Her kart 550x350 boyutunda. Aralara 25px boşluk bırakıyoruz
+            # Standart 550x350px boyutlandırma ve 25px aralık
             x = 25 + (sutun * 575)
             y = 25 + (satir * 375)
 
@@ -4957,22 +4962,26 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.guncelle_tuval_boyutu()
 
     def dashboard_basamakla(self):
-        """ Kartları klasik Windows stiliyle çapraz (basamaklı) üst üste dizer. """
+        """
+        @brief Açık kartları klasik kaskat (basamaklı) düzende çapraz olarak sıralar.
+        """
         if not hasattr(self, 'dashboard_container'):
             return
 
         kartlar = self.dashboard_container.findChildren(SensorGrafikKarti)
         for i, kart in enumerate(kartlar):
-            # Her yeni kartı 50px sağa ve aşağı kaydır
             x = 25 + (i * 50)
             y = 25 + (i * 50)
 
             kart.setGeometry(x, y, 550, 350)
-            kart.raise_()  # Son ekleneni en üste al
+            kart.raise_()
             self.guncelle_tuval_boyutu()
 
     def guncelle_tuval_boyutu(self, sadece_buyut=False):
-        """ Kartların konumuna göre tuvali dinamik olarak boyutlandırır. """
+        """
+        @brief Tuvalin boyutunu içerisindeki kartların en sağ ve en alt koordinatlarına göre dinamik olarak günceller.
+        @param sadece_buyut (bool) True ise tuvalin mevcut boyutundan daha küçüğe inmesine izin vermez.
+        """
         if not hasattr(self, 'dashboard_container') or not hasattr(self, 'dashboard_scroll'):
             return
 
@@ -4988,7 +4997,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             max_x = max(max_x, kart_sag)
             max_y = max(max_y, kart_alt)
 
-        # Sadece Büyütme Modu Aktifse: Eski boyuttan daha küçüğe inmesine izin verme
         if sadece_buyut:
             eski_w = self.dashboard_container.width()
             eski_h = self.dashboard_container.height()
@@ -4997,11 +5005,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         self.dashboard_container.setFixedSize(max_x, max_y)
 
-
-
     # =========================================================================
-    # 💾 FADEC PROJE YÖNETİMİ (KAYDET & AÇ) - 2. ADIM VERİ VE ZAMAN KATMANI
-    # Not: Renkler, Seçim Bölgeleri ve Tablo Seçim durumları güncellendi.
+    # FADEC PROJE YONETIMI (PROJE KAYDET VE AC)
     # =========================================================================
     def proje_kaydet_diyalog(self):
         """
@@ -5056,24 +5061,24 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             # --- PROGRESS DIALOG BAŞLAT ---
             dialog = YuklemeDialog(self)
             dialog.setWindowTitle("Proje Yükleniyor")
-            dialog.lbl_baslik.setText("⏳ Proje Dosyası Okunuyor...")
+            dialog.lbl_baslik.setText("Proje Dosyası Okunuyor...")
             dialog.show()
 
-            dialog.guncelle(10, "📦 ZIP Arşivi Çıkartılıyor ve Ayarlar Okunuyor...")
+            dialog.guncelle(10, "ZIP arşivi çıkartılıyor ve ayarlar okunuyor...")
             QtWidgets.QApplication.processEvents()
 
             with zipfile.ZipFile(dosya_yolu, 'r') as zf:
                 # 1. Ayarları Oku
                 ayarlar = json.loads(zf.read('ayarlar.json').decode('utf-8'))
                 
-                dialog.guncelle(35, "🗜️ Veri Seti Hafızaya Alınıyor (Unpickling)... Lütfen Bekleyin!")
+                dialog.guncelle(35, "Veri seti belleğe alınıyor (Unpickling)... Lütfen bekleyin.")
                 QtWidgets.QApplication.processEvents()
 
                 # 2. Veriyi Oku (Pickle)
                 buffer = io.BytesIO(zf.read('veri.pkl'))
                 df_yuklenen = pd.read_pickle(buffer)
 
-            dialog.guncelle(60, "🛠️ Sistem Verileri Güncelleniyor...")
+            dialog.guncelle(60, "Sistem verileri güncelleniyor...")
             QtWidgets.QApplication.processEvents()
 
             # 3. Sisteme Entegre Et
@@ -5096,7 +5101,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.zaman_ekseni_hata.dt_saniye = dt
             self.zaman_ekseni_genel.dt_saniye = dt
             
-            dialog.guncelle(80, "🎨 Arayüz ve Grafik Ayarları Çiziliyor...")
+            dialog.guncelle(80, "Arayüz ve grafik ayarları yükleniyor...")
             QtWidgets.QApplication.processEvents()
             
             # 5. Ana Tabloyu Doldur (Hata Blokları da Yenilenir)
@@ -5258,13 +5263,13 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     yeni_kart.show()
                     yeni_kart.raise_()
 
-            dialog.guncelle(100, "✅ Tamamlandı!")
+            dialog.guncelle(100, "Tamamlandı.")
             QtWidgets.QApplication.processEvents()
             dialog.accept()
 
             msg = QtWidgets.QMessageBox(self)
             msg.setWindowTitle("Başarılı")
-            msg.setText("✅ Proje başarıyla yüklendi!\nTüm Sayfalar ve Dashboard Kartları başarıyla geri getirildi.")
+            msg.setText("Proje başarıyla yüklendi.\nTüm sayfalar ve çalışma alanı kartları geri getirildi.")
             msg.setIcon(QtWidgets.QMessageBox.Information)
             msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
             msg.exec_()
@@ -5275,6 +5280,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         """
         @brief Uygulama kapatılırken projenin kaydedilip kaydedilmeyeceğini kullanıcıya sorar.
+        @param event (QCloseEvent) Pencere kapanma olayı nesnesi.
         """
         # Veri yoksa direkt kapat
         if getattr(self, 'df', None) is None or self.df.empty:
@@ -5290,10 +5296,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         msg.exec_()
         
         if msg.clickedButton() == btn_evet:
-            # Kayıt iptal edilirse uygulamayı kapatma
             kayit_basarili = False
             
-            # Kaydetme diyalogunu doğrudan çağır
             dosya_yolu, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
                 "Projeyi Kaydet",
@@ -5315,13 +5319,12 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         elif msg.clickedButton() == btn_hayir:
             event.accept()
         else:
-            # Kutuyu çarpıdan kapatırsa
             event.ignore()
 
     def proje_kaydet_yol_ile(self, dosya_yolu):
         """
-        @brief Projeyi parametre olarak verilen dosya yoluna doğrudan kaydeder. 
-               closeEvent içinden sessizce çağırabilmek için ayrıştırıldı.
+        @brief Projeyi parametre olarak verilen dosya yoluna doğrudan kaydeder.
+        @param dosya_yolu (str) .fadec uzantılı hedef dosya yolu.
         """
         import zipfile
         import json
@@ -5334,10 +5337,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             # --- PROGRESS DIALOG BAŞLAT ---
             dialog = YuklemeDialog(self)
             dialog.setWindowTitle("Proje Kaydediliyor")
-            dialog.lbl_baslik.setText("⏳ Proje Paketi Oluşturuluyor...")
+            dialog.lbl_baslik.setText("Proje Paketi Oluşturuluyor...")
             dialog.show()
 
-            dialog.guncelle(5, "📁 Durumlar Toplanıyor (Grafikler, Seçimler)...")
+            dialog.guncelle(5, "Uygulama durumları toplanıyor (Grafikler, Seçimler)...")
             QtWidgets.QApplication.processEvents()
             
             # Zaman başlangıç değeri (Zaman tabanlı katman için)
@@ -5419,14 +5422,14 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 "sayfa_4_durumu": sayfa_4_durumu
             }
             
-            dialog.guncelle(30, "📦 Büyük Veri Seti Kalıba Dökülüyor (Pickling)... Lütfen Bekleyin.")
+            dialog.guncelle(30, "Veri seti serileştiriliyor (Pickling)... Lütfen bekleyin.")
             QtWidgets.QApplication.processEvents()
 
             # 2. Veriyi Serialize Et
             buffer = io.BytesIO()
             self.df.to_pickle(buffer)
             
-            dialog.guncelle(60, "🗜️ Veriler Yüksek Oranda Sıkıştırılıyor (ZIP)... Lütfen Bekleyin!")
+            dialog.guncelle(60, "Veriler sıkıştırılıyor (ZIP)... Lütfen bekleyin.")
             QtWidgets.QApplication.processEvents()
 
             # 3. ZIP tabanlı .fadec
@@ -5434,13 +5437,13 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 zf.writestr('ayarlar.json', json.dumps(proje_bilgisi, indent=4))
                 zf.writestr('veri.pkl', buffer.getvalue())
                 
-            dialog.guncelle(100, "✅ Tamamlandı!")
+            dialog.guncelle(100, "Tamamlandı.")
             QtWidgets.QApplication.processEvents()
             dialog.accept()
             
             msg = QtWidgets.QMessageBox(self)
             msg.setWindowTitle("Başarılı")
-            msg.setText("✅ Proje başarıyla kaydedildi!\nTüm pencereler, grafik zoomları ve hata seçimleri korundu.")
+            msg.setText("Proje başarıyla kaydedildi.\nTüm pencereler, grafik ölçekleri ve hata seçimleri korundu.")
             msg.setIcon(QtWidgets.QMessageBox.Information)
             msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
             msg.exec_()
