@@ -1,0 +1,135 @@
+2990:         """
+2991:         self.pencere_limit = LimitPenceresi(self, self.df)
+2992:         self.pencere_limit.exec_()
+2993: 
+2994:     def DosyaPenceresiniAc(self):
+2995:         """
+2996:         @brief Data ve Event dosyası seçim penceresini açar.
+2997:         """
+2998:         self.pencere_dosya = DosyaSecimPenceresi(self)
+2999:         self.pencere_dosya.exec_()
+3000: 
+3001:     def verileri_yukle_ve_birlestir(self, data_yolu, event_yolu):
+3002:         """
+3003:         @brief Arka plan iş parçacığını (YuklemeThread) başlatır ve ilerleme diyaloğunu görüntüler.
+3004:         @param data_yolu (str) Sensör verisi dosya yolu.
+3005:         @param event_yolu (str) Olay verisi dosya yolu.
+3006:         """
+3007:         # =====================================================================
+3008:         # ZAMAN KOLONU TESPİTİ VE UYARI SİSTEMİ (Heuristic Check)
+3009:         # =====================================================================
+3010:         simule_baslangic = None
+3011:         simule_frekans = None
+3012:         
+3013:         try:
+3014:             if data_yolu.lower().endswith('.csv'):
+3015:                 # Sadece ilk satırları hızlıca okuyup kontrol et
+3016:                 ilk_satirlar = pd.read_csv(data_yolu, nrows=2, sep=None, engine='python')
+3017:             else:
+3018:                 ilk_satirlar = pd.read_excel(data_yolu, nrows=2)
+3019: 
+3020:             if not ilk_satirlar.empty:
+3021:                 ilk_deger_str = str(ilk_satirlar.iloc[0, 0]).strip()
+3022:                 zaman_mi = False
+3023:                 
+3024:                 # Sadece float olan indeksleri datetime sanmasını engellemek için '-' veya ':' arıyoruz
+3025:                 if (':' in ilk_deger_str or '-' in ilk_deger_str or '/' in ilk_deger_str):
+3026:                     try:
+3027:                         if pd.to_datetime(ilk_deger_str, errors='raise') is not pd.NaT:
+3028:                             zaman_mi = True
+3029:                     except:
+3030:                         pass
+3031:                 
+3032:                 if not zaman_mi:
+3033:                     dialog_simule = ZamanSimulasyonDialog(self)
+3034:                     dialog_simule.exec_()
+3035:                     
+3036:                     if dialog_simule.sonuc == "simule":
+3037:                         simule_baslangic = dialog_simule.dt_baslangic.dateTime().toPyDateTime()
+3038:                         simule_frekans = dialog_simule.spin_frekans.value()
+3039:                     elif dialog_simule.sonuc == "oran":
+3040:                         simule_baslangic = None
+3041:                         simule_frekans = None
+3042:                     else:
+3043:                         return # Kullanıcı iptal etti
+3044: 
+3045:         except Exception as e:
+3046:             pass # Ön-okuma hata verirse (Örn dosya bozuksa), işlemi Thread'e devret, o zaten yakalayıp hata fırlatır
+3047:             
+3048:         # =====================================================================
+3049: 
+3050:         self.pencere_yukleme = YuklemeDialog(self)
+3051:         self.pencere_yukleme.show()
+3052: 
+3053:         self.thread_yukleme = YuklemeThread(
+3054:             data_yolu, 
+3055:             event_yolu, 
+3056:             parent=self, 
+3057:             simule_baslangic=simule_baslangic, 
+3058:             simule_frekans=simule_frekans
+3059:         )
+3060:         self.thread_yukleme.progress_signal.connect(self.pencere_yukleme.guncelle)
+3061:         self.thread_yukleme.finished_signal.connect(self._veriler_yuklendi)
+3062:         self.thread_yukleme.error_signal.connect(self._yukleme_hatasi)
+3063:         self.thread_yukleme.start()
+3064: 
+3065:     def _veriler_yuklendi(self, df_data, hata_kolonlari):
+3066:         """
+3067:         @brief Arka plan yüklemesi tamamlandığında tabloları ve eksenleri başlatan callback fonksiyonu.
+3068:         @param df_data (pd.DataFrame) Yüklenen ve birleştirilen ana veri seti.
+3069:         @param hata_kolonlari (list) Tespit edilen hata kolonlarının listesi.
+3070:         """
+3071:         self.df = df_data
+3072:         self.hata_kategorileri = hata_kolonlari
+3073: 
+3074:         # 1. Ana Zaman Kolonunu Konum ve İsimden Bağımsız Dinamik Tespit Et
+3075:         self.ana_zaman_kolonu = None
+3076:         for col in self.df.columns:
+3077:             if not pd.api.types.is_numeric_dtype(self.df[col]):
+3078:                 seri = pd.to_datetime(self.df[col].iloc[:3].astype(str), errors='coerce')
+3079:                 if seri.notna().sum() >= 2:
+3080:                     self.ana_zaman_kolonu = col
+3081:                     break
+3082:         if self.ana_zaman_kolonu is None and len(self.df.columns) > 0:
+3083:             self.ana_zaman_kolonu = self.df.columns[0]
+3084: 
+3085:         self.veri_tablosu.setUpdatesEnabled(False)
+3086:         self.tabloyu_doldur()
+3087:         self.veri_tablosu.setUpdatesEnabled(True)
+3088: 
+3089:         self.HataBloklariAyikla()
+3090: 
+3091:         if hasattr(self, 'pencere_yukleme') and self.pencere_yukleme is not None:
+3092:             self.pencere_yukleme.close()
+3093: 
+3094:         # 2. Grafik Eksenlerine Başlangıç Zamanı ve dt Frekansını Dinamik Tanımla
+3095:         if self.ana_zaman_kolonu and len(self.df) >= 2:
+3096:             t0 = pd.to_datetime(str(self.df.iloc[0][self.ana_zaman_kolonu]), errors='coerce')
+3097:             t1 = pd.to_datetime(str(self.df.iloc[1][self.ana_zaman_kolonu]), errors='coerce')
+3098:             if pd.notna(t0) and pd.notna(t1):
+3099:                 self.zaman_ekseni.baslangic_zamani = t0
+3100:                 fark = abs((t1 - t0).total_seconds())
+3101:                 dt = fark if fark > 0 else 0.1
+3102:                 self.zaman_ekseni.dt_saniye = dt
+3103:                 self.zaman_ekseni_hata.baslangic_zamani = t0
+3104:                 self.zaman_ekseni_hata.dt_saniye = dt
+3105:                 self.zaman_ekseni_genel.baslangic_zamani = t0
+3106:                 self.zaman_ekseni_genel.dt_saniye = dt
+3107: 
+3108:     def _yukleme_hatasi(self, hata_metni):
+3109:         """
+3110:         @brief Dosya yükleme hatası oluştuğunda kullanıcıya uyarı gösterir.
+3111:         @param hata_metni (str) Hata ayrıntı açıklaması.
+3112:         """
+3113:         if hasattr(self, 'pencere_yukleme') and self.pencere_yukleme is not None:
+3114:             self.pencere_yukleme.close()
+3115:         QtWidgets.QMessageBox.critical(self, "Yükleme Hatası", f"Veriler yüklenirken bir hata oluştu:\n{hata_metni}")
+3116: 
+3117:     def AyarlariAc(self): # Hata Ayıklama kısmındaki Limit penceresinden bahsediyoruz.
+3118:         """
+3119:         @brief Limit ayarları penceresini açar ve uygulanan seçimlere göre limit çizgilerini günceller.
+3120:         """
+3121:         aktif_sensorler = list(self.aktif_cizgiler.keys())
+3122:         kolon_Adlari = [c for c in self.df.columns if c != "Zaman"]
+3123: 
+3124:         self.ayarpenceresi = AyarlarPenceresi(aktif_sensorler, kolon_Adlari)

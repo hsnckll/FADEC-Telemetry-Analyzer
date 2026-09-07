@@ -1,0 +1,58 @@
+2157:         # Sağ Üst Köşe Araç Çubuğu (Kullanım Kılavuzu + Tema Değiştirme Butonları)
+2158:         self.corner_container = QtWidgets.QWidget()
+2159:         layout_corner = QtWidgets.QHBoxLayout(self.corner_container)
+2160:         layout_corner.setContentsMargins(0, 0, 8, 0)
+2161:         layout_corner.setSpacing(6)
+2162: 
+2163:         # 1. Kullanım Kılavuzu Butonu (ℹ)
+2164:         self.btn_kilavuz = QtWidgets.QPushButton("ℹ Kullanım Kılavuzu")
+2165:         self.btn_kilavuz.setCursor(QtCore.Qt.PointingHandCursor)
+2166:         self.btn_kilavuz.setStyleSheet("""
+2167:             QPushButton {
+2168:                 background-color: #252525;
+2169:                 color: #e0e0e0;
+2170:                 border: 1.5px solid #444444;
+2171:                 border-radius: 5px;
+2172:                 padding: 5px 12px;
+2173:                 font-weight: bold;
+2174:                 font-size: 11px;
+2175:                 margin-top: 2px;
+2176:                 margin-bottom: 2px;
+2177:             }
+2178:             QPushButton:hover {
+2179:                 background-color: #333333;
+2180:                 color: #00ffcc;
+2181:                 border: 1.5px solid #00ffcc;
+2182:             }
+2183:         """)
+2184: 
+2185:         # 2. Tema Değiştirme Butonu
+2186:         self.aktif_tema = "dark"
+2187:         self.btn_tema_degistir = QtWidgets.QPushButton("Tema: Dark")
+2188:         self.btn_tema_degistir.setCursor(QtCore.Qt.PointingHandCursor)
+2189:         self.btn_tema_degistir.setStyleSheet("""
+2190:             QPushButton {
+2191:                 background-color: #252525;
+2192:                 color: #00ffcc;
+2193:                 border: 1.5px solid #00ffcc;
+2194:                 border-radius: 5px;
+2195:                 padding: 5px 14px;
+2196:                 font-weight: bold;
+2197:                 font-size: 11px;
+2198:                 margin-top: 2px;
+2199:                 margin-bottom: 2px;
+2200:             }
+2201:             QPushButton:hover {
+2202:                 background-color: #00ffcc;
+2203:                 color: #121212;
+2204:             }
+2205:         """)
+2206:         self.btn_tema_degistir.clicked.connect(self.tema_degistir)
+2207: 
+2208:         self.btn_kilavuz.clicked.connect(self.kilavuz_ac)
+2209: 
+2210:         layout_corner.addWidget(self.btn_kilavuz)
+2211:         layout_corner.addWidget(self.btn_tema_degistir)
+2212:         self.tabWidget.setCornerWidget(self.corner_container, QtCore.Qt.TopRightCorner)
+2213: 
+2214: 

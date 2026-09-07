@@ -63,6 +63,43 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QIcon, QPixmap, QBrush, QColor, QFont
 from pyqtgraph.exporters import ImageExporter
+
+# ==============================================================================
+# TÜRKÇE MESAJ KUTUSU YAMASI (MONKEY PATCHING)
+# ==============================================================================
+def _tr_warning(parent, title, text, *args, **kwargs):
+    from PyQt5 import QtWidgets
+    msg = QtWidgets.QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setIcon(QtWidgets.QMessageBox.Warning)
+    msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
+    msg.exec_()
+    return QtWidgets.QMessageBox.Ok
+
+def _tr_critical(parent, title, text, *args, **kwargs):
+    from PyQt5 import QtWidgets
+    msg = QtWidgets.QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setIcon(QtWidgets.QMessageBox.Critical)
+    msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
+    msg.exec_()
+    return QtWidgets.QMessageBox.Ok
+
+def _tr_information(parent, title, text, *args, **kwargs):
+    from PyQt5 import QtWidgets
+    msg = QtWidgets.QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setIcon(QtWidgets.QMessageBox.Information)
+    msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
+    msg.exec_()
+    return QtWidgets.QMessageBox.Ok
+
+QMessageBox.warning = _tr_warning
+QMessageBox.critical = _tr_critical
+QMessageBox.information = _tr_information
 # ==============================================================================
 # 4. KULLANICI ARAYÜZÜ (UI) MODÜLLERİ
 # ==============================================================================
@@ -2155,16 +2192,13 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.tabWidget.tabBar().setElideMode(QtCore.Qt.ElideNone)
         self.tabWidget.setCurrentIndex(0)
 
-        # Sağ Üst Köşe Araç Çubuğu (Kullanım Kılavuzu + Tema Değiştirme Butonları)
+        # Sağ Üst Köşe Araç Çubuğu (Proje İşlemleri + Kullanım Kılavuzu + Tema Değiştirme)
         self.corner_container = QtWidgets.QWidget()
         layout_corner = QtWidgets.QHBoxLayout(self.corner_container)
         layout_corner.setContentsMargins(0, 0, 8, 0)
         layout_corner.setSpacing(6)
 
-        # 1. Kullanım Kılavuzu Butonu (ℹ)
-        self.btn_kilavuz = QtWidgets.QPushButton("ℹ Kullanım Kılavuzu")
-        self.btn_kilavuz.setCursor(QtCore.Qt.PointingHandCursor)
-        self.btn_kilavuz.setStyleSheet("""
+        stil_koyu_ust_buton = """
             QPushButton {
                 background-color: #252525;
                 color: #e0e0e0;
@@ -2181,9 +2215,27 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 color: #00ffcc;
                 border: 1.5px solid #00ffcc;
             }
-        """)
+        """
 
-        # 2. Tema Değiştirme Butonu
+        # 1. Proje Aç Butonu
+        self.btn_proje_ac = QtWidgets.QPushButton("Proje Aç")
+        self.btn_proje_ac.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_proje_ac.setStyleSheet(stil_koyu_ust_buton)
+        self.btn_proje_ac.clicked.connect(self.proje_ac_diyalog)
+
+        # 2. Projeyi Kaydet Butonu
+        self.btn_proje_kaydet = QtWidgets.QPushButton("Projeyi Kaydet")
+        self.btn_proje_kaydet.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_proje_kaydet.setStyleSheet(stil_koyu_ust_buton)
+        self.btn_proje_kaydet.clicked.connect(self.proje_kaydet_diyalog)
+
+        # 3. Kullanım Kılavuzu Butonu (ℹ)
+        self.btn_kilavuz = QtWidgets.QPushButton("ℹ Kullanım Kılavuzu")
+        self.btn_kilavuz.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_kilavuz.setStyleSheet(stil_koyu_ust_buton)
+        self.btn_kilavuz.clicked.connect(self.kilavuz_ac)
+
+        # 4. Tema Değiştirme Butonu
         self.aktif_tema = "dark"
         self.btn_tema_degistir = QtWidgets.QPushButton("Tema: Dark")
         self.btn_tema_degistir.setCursor(QtCore.Qt.PointingHandCursor)
@@ -2206,8 +2258,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         """)
         self.btn_tema_degistir.clicked.connect(self.tema_degistir)
 
-        self.btn_kilavuz.clicked.connect(self.kilavuz_ac)
-
+        layout_corner.addWidget(self.btn_proje_ac)
+        layout_corner.addWidget(self.btn_proje_kaydet)
         layout_corner.addWidget(self.btn_kilavuz)
         layout_corner.addWidget(self.btn_tema_degistir)
         self.tabWidget.setCornerWidget(self.corner_container, QtCore.Qt.TopRightCorner)
@@ -3484,7 +3536,22 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
     def odak_bolgesini_fareye_tasi(self, hedef_x=None):
         """
         @brief Odak bölgesini (LinearRegionItem) bozulmadan hedeflenen X eksenine ışınlar.
+               Eğer Sayfa 4 (Dashboard) aktifse, imlecin altındaki karta yönlendirir.
         """
+        # --- TAB 4 (DASHBOARD) KONTROLÜ ---
+        if hasattr(self, 'tabWidget') and self.tabWidget.currentIndex() == 3:
+            if hasattr(self, 'dashboard_container'):
+                from grafik_class import SensorGrafikKarti
+                for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
+                    # Farenin kartın üzerinde olup olmadığını kontrol et
+                    if kart.underMouse() or (hasattr(kart, 'plot_widget') and kart.plot_widget.underMouse()):
+                        kart_fare_x = getattr(kart, 'son_fare_x', None)
+                        if kart_fare_x is not None:
+                            kart.odak_bolgesini_fareye_tasi(kart_fare_x)
+                        return
+            return
+
+        # --- TAB 1 (ANA SAYFA) KONTROLÜ ---
         if self.secimBolgesi is None:
             return
             
@@ -4816,6 +4883,456 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
 
 
+    # =========================================================================
+    # 💾 FADEC PROJE YÖNETİMİ (KAYDET & AÇ) - 2. ADIM VERİ VE ZAMAN KATMANI
+    # Not: Renkler, Seçim Bölgeleri ve Tablo Seçim durumları güncellendi.
+    # =========================================================================
+    def proje_kaydet_diyalog(self):
+        """
+        @brief Projeyi .fadec uzantısıyla ZIP tabanlı bir paket olarak kaydeder.
+        """
+        if getattr(self, 'df', None) is None or len(self.df) == 0:
+            QtWidgets.QMessageBox.warning(
+                self, 
+                "Uyarı", 
+                "Kaydedilecek aktif bir veri seti bulunmuyor!\nLütfen önce bir CSV veya Log oturumu yükleyiniz."
+            )
+            return
+
+        varsayilan_ad = "FADEC_Analiz_Projesi.fadec"
+        dosya_yolu, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "FADEC Projesini Kaydet",
+            varsayilan_ad,
+            "FADEC Proje Dosyası (*.fadec);;Tüm Dosyalar (*)"
+        )
+        
+        if not dosya_yolu:
+            return
+            
+        if not dosya_yolu.endswith('.fadec'):
+            dosya_yolu += '.fadec'
+
+        # Asıl kaydetme işlemini yapan metoda yönlendir (Progress bar orada var)
+        self.proje_kaydet_yol_ile(dosya_yolu)
+
+    def proje_ac_diyalog(self):
+        """
+        @brief Önceden kaydedilmiş .fadec projesini açar, veriyi ve zaman ayarlarını geri yükler.
+        """
+        import zipfile
+        import json
+        import io
+        import pandas as pd
+        from PyQt5 import QtCore, QtWidgets
+        import pyqtgraph as pg
+
+        dosya_yolu, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "FADEC Projesi Aç",
+            "",
+            "FADEC Proje Dosyası (*.fadec);;Tüm Dosyalar (*)"
+        )
+        if not dosya_yolu:
+            return
+
+        try:
+            # --- PROGRESS DIALOG BAŞLAT ---
+            dialog = YuklemeDialog(self)
+            dialog.setWindowTitle("Proje Yükleniyor")
+            dialog.lbl_baslik.setText("⏳ Proje Dosyası Okunuyor...")
+            dialog.show()
+
+            dialog.guncelle(10, "📦 ZIP Arşivi Çıkartılıyor ve Ayarlar Okunuyor...")
+            QtWidgets.QApplication.processEvents()
+
+            with zipfile.ZipFile(dosya_yolu, 'r') as zf:
+                # 1. Ayarları Oku
+                ayarlar = json.loads(zf.read('ayarlar.json').decode('utf-8'))
+                
+                dialog.guncelle(35, "🗜️ Veri Seti Hafızaya Alınıyor (Unpickling)... Lütfen Bekleyin!")
+                QtWidgets.QApplication.processEvents()
+
+                # 2. Veriyi Oku (Pickle)
+                buffer = io.BytesIO(zf.read('veri.pkl'))
+                df_yuklenen = pd.read_pickle(buffer)
+
+            dialog.guncelle(60, "🛠️ Sistem Verileri Güncelleniyor...")
+            QtWidgets.QApplication.processEvents()
+
+            # 3. Sisteme Entegre Et
+            self.df = df_yuklenen
+            self.ana_zaman_kolonu = ayarlar.get("ana_zaman_kolonu")
+            self.hata_kategorileri = ayarlar.get("hata_kategorileri", [])
+            
+            # 4. Zaman Katmanını Manuel Yükle
+            zaman_ayarlari = ayarlar.get("zaman_ayarlari", {})
+            t0_str = zaman_ayarlari.get("t0")
+            
+            if t0_str:
+                t0 = pd.to_datetime(t0_str)
+                self.zaman_ekseni.baslangic_zamani = t0
+                self.zaman_ekseni_hata.baslangic_zamani = t0
+                self.zaman_ekseni_genel.baslangic_zamani = t0
+                
+            dt = zaman_ayarlari.get("dt", 0.1)
+            self.zaman_ekseni.dt_saniye = dt
+            self.zaman_ekseni_hata.dt_saniye = dt
+            self.zaman_ekseni_genel.dt_saniye = dt
+            
+            dialog.guncelle(80, "🎨 Arayüz ve Grafik Ayarları Çiziliyor...")
+            QtWidgets.QApplication.processEvents()
+            
+            # 5. Ana Tabloyu Doldur (Hata Blokları da Yenilenir)
+            self.veri_tablosu.setUpdatesEnabled(False)
+            self.tabloyu_doldur()
+            self.veri_tablosu.setUpdatesEnabled(True)
+            self.HataBloklariAyikla()
+            
+            # 6. --- SAYFA 1, 2, 3 DURUMLARINI GERİ YÜKLE ---
+            
+            # SAYFA 1 (Genel Analiz)
+            sayfa_1 = ayarlar.get("sayfa_1_durumu", {})
+            if sayfa_1 and hasattr(self, 'analiz_grafigi'):
+                for c_isim in list(getattr(self, 'aktif_cizgiler', {}).keys()):
+                    if c_isim in self.df.columns:
+                        idx = list(self.df.columns).index(c_isim)
+                        self.sutuna_tiklandi(idx)
+                
+                renkler_1 = sayfa_1.get("renkler", {})
+                for c_isim in sayfa_1.get("aktif_sensorler", []):
+                    if c_isim in self.df.columns and c_isim not in getattr(self, 'aktif_cizgiler', {}):
+                        idx = list(self.df.columns).index(c_isim)
+                        self.sutuna_tiklandi(idx)
+                        if c_isim in renkler_1 and c_isim in getattr(self, 'aktif_cizgiler', {}):
+                            self.aktif_cizgiler[c_isim].setPen(pg.mkPen(color=renkler_1[c_isim], width=2))
+                
+                if sayfa_1.get("secim_bolgesi_aktif"):
+                    if getattr(self, 'secimBolgesi', None) is None:
+                        self.btn_BolgeSec.click()
+                    if hasattr(self, 'secimBolgesi') and self.secimBolgesi:
+                        sinirlar = sayfa_1.get("secim_bolgesi_sinirlar", [])
+                        if len(sinirlar) == 2:
+                            self.secimBolgesi.setRegion(sinirlar)
+
+                vr1 = sayfa_1.get("view_range")
+                if vr1:
+                    self.analiz_grafigi.setXRange(vr1[0][0], vr1[0][1], padding=0)
+                    self.analiz_grafigi.setYRange(vr1[1][0], vr1[1][1], padding=0)
+
+            # SAYFA 2 (Hata Ayıklama)
+            sayfa_2 = ayarlar.get("sayfa_2_durumu", {})
+            if sayfa_2 and hasattr(self, 'hata_grafik') and hasattr(self, 'liste_sensor_secim'):
+                secilenler_2 = sayfa_2.get("aktif_sensorler", [])
+                for i in range(self.liste_sensor_secim.count()):
+                    item = self.liste_sensor_secim.item(i)
+                    item.setCheckState(QtCore.Qt.Checked if item.text() in secilenler_2 else QtCore.Qt.Unchecked)
+                
+                secili_kategori = sayfa_2.get("secili_kategori")
+                if secili_kategori and hasattr(self, 'cmb_HataKategori'):
+                    idx = self.cmb_HataKategori.findText(secili_kategori)
+                    if idx >= 0:
+                        self.cmb_HataKategori.setCurrentIndex(idx)
+                        
+                secili_blok_idx = sayfa_2.get("secili_blok_idx", -1)
+                if secili_blok_idx != -1 and hasattr(self, 'HataBlok_List'):
+                    if secili_blok_idx < self.HataBlok_List.count():
+                        self.HataBlok_List.setCurrentRow(secili_blok_idx)
+                        
+                if secilenler_2 and secili_blok_idx != -1:
+                    self.HataBloklariniCiz()
+                    renkler_2 = sayfa_2.get("renkler", {})
+                    for k, r_hex in renkler_2.items():
+                        if k in getattr(self, 'aktif_cizgiler_hata', {}):
+                            self.aktif_cizgiler_hata[k].setPen(pg.mkPen(color=r_hex, width=2))
+                    vr2 = sayfa_2.get("view_range")
+                    if vr2:
+                        self.hata_grafik.setXRange(vr2[0][0], vr2[0][1], padding=0)
+                        self.hata_grafik.setYRange(vr2[1][0], vr2[1][1], padding=0)
+
+            # SAYFA 3 (Genel Hata Analizi)
+            sayfa_3 = ayarlar.get("sayfa_3_durumu", {})
+            if sayfa_3 and hasattr(self, 'GenelHataBloklari') and hasattr(self, 'list_sensorSecim'):
+                secilenler_3 = sayfa_3.get("aktif_sensorler", [])
+                for i in range(self.list_sensorSecim.count()):
+                    item = self.list_sensorSecim.item(i)
+                    item.setCheckState(QtCore.Qt.Checked if item.text() in secilenler_3 else QtCore.Qt.Unchecked)
+                
+                secili_hatalar = sayfa_3.get("secili_hatalar", [])
+                if hasattr(self, 'cmb_HataBloklariGenel') and self.cmb_HataBloklariGenel.model():
+                    m = self.cmb_HataBloklariGenel.model()
+                    for i in range(m.rowCount()):
+                        item = m.item(i)
+                        item.setCheckState(QtCore.Qt.Checked if item.text() in secili_hatalar else QtCore.Qt.Unchecked)
+                    
+                    if secili_hatalar:
+                        self.cmb_HataBloklariGenel.setCurrentText(secili_hatalar[0])
+                        
+                if secilenler_3 and secili_hatalar:
+                    self.genel_grafik_ciz()
+                    renkler_3 = sayfa_3.get("renkler", {})
+                    for k, r_hex in renkler_3.items():
+                        if k in getattr(self, 'aktif_cizgiler_genel', {}):
+                            self.aktif_cizgiler_genel[k].setPen(pg.mkPen(color=r_hex, width=2))
+                    vr3 = sayfa_3.get("view_range")
+                    if vr3:
+                        self.GenelHataBloklari.setXRange(vr3[0][0], vr3[0][1], padding=0)
+                        self.GenelHataBloklari.setYRange(vr3[1][0], vr3[1][1], padding=0)
+
+            # SAYFA 4 (Dashboard - Serbest Alan)
+            sayfa_4 = ayarlar.get("sayfa_4_durumu", {})
+            kart_verileri = sayfa_4.get("kartlar", [])
+            if kart_verileri and hasattr(self, 'dashboard_container'):
+                from grafik_class import SensorGrafikKarti
+                
+                # Mevcut kartları temizle
+                for eski_kart in self.dashboard_container.findChildren(SensorGrafikKarti):
+                    eski_kart.setParent(None)
+                    eski_kart.deleteLater()
+                    
+                tema = getattr(self, 'aktif_tema', 'dark')
+                
+                # Kayıtlı kartları yeniden oluştur
+                for k_bilgi in kart_verileri:
+                    c_rengi = k_bilgi.get("cizgi_rengi", "#00ffcc")
+                    if isinstance(c_rengi, list):
+                        c_rengi = tuple(c_rengi)
+                        
+                    yeni_kart = SensorGrafikKarti(
+                        sensor_adi=k_bilgi.get("sensor_adi"),
+                        df=self.df,
+                        parent=self.dashboard_container,
+                        limitler=k_bilgi.get("limitler"),
+                        cizgi_rengi=c_rengi,
+                        tema=tema,
+                        grafik_tipi=k_bilgi.get("grafik_tipi", "line"),
+                        x_sensor_adi=k_bilgi.get("x_sensor_adi")
+                    )
+                    
+                    # Kart kapandığında bellekten temizlenmesi için ana pencereye bağla
+                    if hasattr(self, 'dashboard_kart_kapatildi'):
+                        yeni_kart.kapandi_signal.connect(self.dashboard_kart_kapatildi)
+                    
+                    # Pozisyon ve Boyut Ayarla
+                    geo = k_bilgi.get("geometri")
+                    if geo and len(geo) == 4:
+                        yeni_kart.setGeometry(geo[0], geo[1], geo[2], geo[3])
+                        
+                    # Grup ID Ayarla
+                    grp_id = k_bilgi.get("grup_id")
+                    if grp_id:
+                        yeni_kart.grup_id = grp_id
+                        if hasattr(yeni_kart, 'baslik'):
+                            yeni_kart.baslik.setText(f" {yeni_kart.sensor_adi} [GRUP {grp_id}]")
+                            yeni_kart.baslik.setStyleSheet(f"color: #00ffcc; background-color: #262626; padding: 5px; border-radius: 4px; border-left: 3px solid #00ffcc;")
+                        
+                    # Odak Bölgesi (Seçim aralığı) Ayarla
+                    odak = k_bilgi.get("odak_bolgesi")
+                    if odak and len(odak) == 2:
+                        yeni_kart.odak_bolgesi_ayarla(True) # Bölgeyi oluşturur
+                        if hasattr(yeni_kart, 'odak_bolgesi') and yeni_kart.odak_bolgesi:
+                            yeni_kart.odak_bolgesi.setRegion(odak)
+                            
+                    # Zoom Seviyesini (ViewRange) Ayarla
+                    view = k_bilgi.get("view_range")
+                    if view and hasattr(yeni_kart, 'plot_widget'):
+                        yeni_kart.plot_widget.setXRange(view[0][0], view[0][1], padding=0)
+                        yeni_kart.plot_widget.setYRange(view[1][0], view[1][1], padding=0)
+                        
+                    yeni_kart.show()
+                    yeni_kart.raise_()
+
+            dialog.guncelle(100, "✅ Tamamlandı!")
+            QtWidgets.QApplication.processEvents()
+            dialog.accept()
+
+            msg = QtWidgets.QMessageBox(self)
+            msg.setWindowTitle("Başarılı")
+            msg.setText("✅ Proje başarıyla yüklendi!\nTüm Sayfalar ve Dashboard Kartları başarıyla geri getirildi.")
+            msg.setIcon(QtWidgets.QMessageBox.Information)
+            msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
+            msg.exec_()
+        except Exception as e:
+            if 'dialog' in locals(): dialog.accept()
+            QtWidgets.QMessageBox.critical(self, "Yükleme Hatası", f"Proje dosyası okunamadı veya formatı geçersiz:\n{str(e)}")
+
+    def closeEvent(self, event):
+        """
+        @brief Uygulama kapatılırken projenin kaydedilip kaydedilmeyeceğini kullanıcıya sorar.
+        """
+        # Veri yoksa direkt kapat
+        if getattr(self, 'df', None) is None or self.df.empty:
+            event.accept()
+            return
+            
+        msg = QtWidgets.QMessageBox(self)
+        msg.setWindowTitle("Projeyi Kaydet")
+        msg.setText("Uygulamadan çıkıyorsunuz. Mevcut projeyi (Veriler, Grafik Zoomları, Sayfa 4 Dashboard) kaydetmek ister misiniz?\n\n(Daha sonra kaldığınız yerden devam etmek için 'Evet' diyebilirsiniz.)")
+        msg.setIcon(QtWidgets.QMessageBox.Question)
+        btn_evet = msg.addButton("Evet", QtWidgets.QMessageBox.YesRole)
+        btn_hayir = msg.addButton("Hayır", QtWidgets.QMessageBox.NoRole)
+        msg.exec_()
+        
+        if msg.clickedButton() == btn_evet:
+            # Kayıt iptal edilirse uygulamayı kapatma
+            kayit_basarili = False
+            
+            # Kaydetme diyalogunu doğrudan çağır
+            dosya_yolu, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Projeyi Kaydet",
+                "Proje1",
+                "FADEC Projesi (*.fadec)"
+            )
+            
+            if dosya_yolu:
+                if not dosya_yolu.endswith('.fadec'):
+                    dosya_yolu += '.fadec'
+                self.proje_kaydet_yol_ile(dosya_yolu)
+                kayit_basarili = True
+                
+            if not kayit_basarili:
+                event.ignore()
+                return
+            event.accept()
+            
+        elif msg.clickedButton() == btn_hayir:
+            event.accept()
+        else:
+            # Kutuyu çarpıdan kapatırsa
+            event.ignore()
+
+    def proje_kaydet_yol_ile(self, dosya_yolu):
+        """
+        @brief Projeyi parametre olarak verilen dosya yoluna doğrudan kaydeder. 
+               closeEvent içinden sessizce çağırabilmek için ayrıştırıldı.
+        """
+        import zipfile
+        import json
+        import io
+        import pandas as pd
+        from PyQt5 import QtCore, QtWidgets
+        import pyqtgraph as pg
+
+        try:
+            # --- PROGRESS DIALOG BAŞLAT ---
+            dialog = YuklemeDialog(self)
+            dialog.setWindowTitle("Proje Kaydediliyor")
+            dialog.lbl_baslik.setText("⏳ Proje Paketi Oluşturuluyor...")
+            dialog.show()
+
+            dialog.guncelle(5, "📁 Durumlar Toplanıyor (Grafikler, Seçimler)...")
+            QtWidgets.QApplication.processEvents()
+            
+            # Zaman başlangıç değeri (Zaman tabanlı katman için)
+            t0 = getattr(self.zaman_ekseni, 'baslangic_zamani', None)
+            t0_str = t0.isoformat() if pd.notna(t0) else None
+            
+            # --- SAYFA 1, 2, 3 DURUMLARINI TOPLAMA ---
+            
+            # Sayfa 1 (Genel Analiz)
+            sayfa_1_durumu = {
+                "aktif_sensorler": list(getattr(self, 'aktif_cizgiler', {}).keys()),
+                "renkler": {k: v.opts['pen'].color().name() for k, v in getattr(self, 'aktif_cizgiler', {}).items() if hasattr(v, 'opts') and 'pen' in v.opts},
+                "view_range": getattr(self, 'analiz_grafigi', None).viewRange() if getattr(self, 'analiz_grafigi', None) else None,
+                "secim_bolgesi_aktif": hasattr(self, 'secimBolgesi') and self.secimBolgesi is not None,
+                "secim_bolgesi_sinirlar": list(self.secimBolgesi.getRegion()) if hasattr(self, 'secimBolgesi') and self.secimBolgesi is not None else []
+            }
+            
+            # Sayfa 2 (Hata Ayıklama)
+            sayfa_2_durumu = {
+                "aktif_sensorler": list(getattr(self, 'aktif_cizgiler_hata', {}).keys()),
+                "renkler": {k: v.opts['pen'].color().name() for k, v in getattr(self, 'aktif_cizgiler_hata', {}).items() if hasattr(v, 'opts') and 'pen' in v.opts},
+                "view_range": getattr(self, 'hata_grafik', None).viewRange() if getattr(self, 'hata_grafik', None) else None,
+                "secili_kategori": getattr(self, 'cmb_HataKategori', None).currentText() if hasattr(self, 'cmb_HataKategori') else "",
+                "secili_blok_idx": getattr(self, 'HataBlok_List', None).currentRow() if hasattr(self, 'HataBlok_List') else -1
+            }
+            
+            # Sayfa 3 (Genel Hata Analizi)
+            secili_hatalar_tab3 = []
+            if hasattr(self, 'cmb_HataBloklariGenel') and self.cmb_HataBloklariGenel.model():
+                m = self.cmb_HataBloklariGenel.model()
+                for i in range(m.rowCount()):
+                    if m.item(i).checkState() == QtCore.Qt.Checked:
+                        secili_hatalar_tab3.append(m.item(i).text())
+            
+            if not secili_hatalar_tab3 and hasattr(self, 'cmb_HataBloklariGenel') and self.cmb_HataBloklariGenel.currentText():
+                secili_hatalar_tab3 = [self.cmb_HataBloklariGenel.currentText()]
+                        
+            sayfa_3_durumu = {
+                "aktif_sensorler": list(getattr(self, 'aktif_cizgiler_genel', {}).keys()),
+                "renkler": {k: v.opts['pen'].color().name() for k, v in getattr(self, 'aktif_cizgiler_genel', {}).items() if hasattr(v, 'opts') and 'pen' in v.opts},
+                "view_range": getattr(self, 'GenelHataBloklari', None).viewRange() if getattr(self, 'GenelHataBloklari', None) else None,
+                "secili_hatalar": secili_hatalar_tab3
+            }
+
+            # Sayfa 4 (Dashboard - Serbest Alan)
+            sayfa_4_kartlar = []
+            if hasattr(self, 'dashboard_container'):
+                from grafik_class import SensorGrafikKarti
+                for kart in self.dashboard_container.findChildren(SensorGrafikKarti):
+                    odak = list(kart.odak_bolgesi.getRegion()) if hasattr(kart, 'odak_bolgesi') and kart.odak_bolgesi else None
+                    view = kart.plot_widget.viewRange() if hasattr(kart, 'plot_widget') else None
+                    
+                    kart_bilgisi = {
+                        "sensor_adi": kart.sensor_adi,
+                        "x_sensor_adi": kart.x_sensor_adi,
+                        "limitler": kart.limitler,
+                        "cizgi_rengi": kart.cizgi_rengi,
+                        "grafik_tipi": kart.grafik_tipi,
+                        "grup_id": getattr(kart, 'grup_id', None),
+                        "geometri": [kart.x(), kart.y(), kart.width(), kart.height()],
+                        "odak_bolgesi": odak,
+                        "view_range": view
+                    }
+                    sayfa_4_kartlar.append(kart_bilgisi)
+                    
+            sayfa_4_durumu = {"kartlar": sayfa_4_kartlar}
+            
+            # 1. Proje Ayarları
+            proje_bilgisi = {
+                "ana_zaman_kolonu": getattr(self, 'ana_zaman_kolonu', None),
+                "hata_kategorileri": getattr(self, 'hata_kategorileri', []),
+                "zaman_ayarlari": {
+                    "t0": t0_str,
+                    "dt": getattr(self.zaman_ekseni, 'dt_saniye', 0.1)
+                },
+                "sayfa_1_durumu": sayfa_1_durumu,
+                "sayfa_2_durumu": sayfa_2_durumu,
+                "sayfa_3_durumu": sayfa_3_durumu,
+                "sayfa_4_durumu": sayfa_4_durumu
+            }
+            
+            dialog.guncelle(30, "📦 Büyük Veri Seti Kalıba Dökülüyor (Pickling)... Lütfen Bekleyin.")
+            QtWidgets.QApplication.processEvents()
+
+            # 2. Veriyi Serialize Et
+            buffer = io.BytesIO()
+            self.df.to_pickle(buffer)
+            
+            dialog.guncelle(60, "🗜️ Veriler Yüksek Oranda Sıkıştırılıyor (ZIP)... Lütfen Bekleyin!")
+            QtWidgets.QApplication.processEvents()
+
+            # 3. ZIP tabanlı .fadec
+            with zipfile.ZipFile(dosya_yolu, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr('ayarlar.json', json.dumps(proje_bilgisi, indent=4))
+                zf.writestr('veri.pkl', buffer.getvalue())
+                
+            dialog.guncelle(100, "✅ Tamamlandı!")
+            QtWidgets.QApplication.processEvents()
+            dialog.accept()
+            
+            msg = QtWidgets.QMessageBox(self)
+            msg.setWindowTitle("Başarılı")
+            msg.setText("✅ Proje başarıyla kaydedildi!\nTüm pencereler, grafik zoomları ve hata seçimleri korundu.")
+            msg.setIcon(QtWidgets.QMessageBox.Information)
+            msg.addButton("Tamam", QtWidgets.QMessageBox.AcceptRole)
+            msg.exec_()
+                
+        except Exception as e:
+            if 'dialog' in locals(): dialog.accept()
+            QtWidgets.QMessageBox.critical(self, "Kayıt Hatası", f"Proje kaydedilirken bir hata oluştu:\n{str(e)}")
+
     def kilavuz_ac(self):
         """
         @brief FADEC Kullanım Kılavuzu PDF dosyasını sistemin varsayılan PDF görüntüleyicisinde açar.
@@ -4895,25 +5412,30 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     color: #ffffff;
                 }
             """)
+            stil_acik_proje_btn = """
+                QPushButton {
+                    background-color: #ffffff;
+                    color: #1e293b;
+                    border: 1.5px solid #cbd5e1;
+                    border-radius: 5px;
+                    padding: 5px 12px;
+                    font-weight: bold;
+                    font-size: 11px;
+                    margin-top: 2px;
+                    margin-bottom: 2px;
+                }
+                QPushButton:hover {
+                    background-color: #f1f5f9;
+                    color: #0284c7;
+                    border: 1.5px solid #0284c7;
+                }
+            """
+            if hasattr(self, 'btn_proje_ac'):
+                self.btn_proje_ac.setStyleSheet(stil_acik_proje_btn)
+            if hasattr(self, 'btn_proje_kaydet'):
+                self.btn_proje_kaydet.setStyleSheet(stil_acik_proje_btn)
             if hasattr(self, 'btn_kilavuz'):
-                self.btn_kilavuz.setStyleSheet("""
-                    QPushButton {
-                        background-color: #ffffff;
-                        color: #1e293b;
-                        border: 1.5px solid #cbd5e1;
-                        border-radius: 5px;
-                        padding: 5px 12px;
-                        font-weight: bold;
-                        font-size: 11px;
-                        margin-top: 2px;
-                        margin-bottom: 2px;
-                    }
-                    QPushButton:hover {
-                        background-color: #f1f5f9;
-                        color: #0284c7;
-                        border: 1.5px solid #0284c7;
-                    }
-                """)
+                self.btn_kilavuz.setStyleSheet(stil_acik_proje_btn)
             if hasattr(self, 'btn_YapayZeka'):
                 self.btn_YapayZeka.setStyleSheet("""
                     QPushButton {
@@ -5078,25 +5600,30 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     color: #121212;
                 }
             """)
+            stil_koyu_proje_btn = """
+                QPushButton {
+                    background-color: #252525;
+                    color: #e0e0e0;
+                    border: 1.5px solid #444444;
+                    border-radius: 5px;
+                    padding: 5px 12px;
+                    font-weight: bold;
+                    font-size: 11px;
+                    margin-top: 2px;
+                    margin-bottom: 2px;
+                }
+                QPushButton:hover {
+                    background-color: #333333;
+                    color: #00ffcc;
+                    border: 1.5px solid #00ffcc;
+                }
+            """
+            if hasattr(self, 'btn_proje_ac'):
+                self.btn_proje_ac.setStyleSheet(stil_koyu_proje_btn)
+            if hasattr(self, 'btn_proje_kaydet'):
+                self.btn_proje_kaydet.setStyleSheet(stil_koyu_proje_btn)
             if hasattr(self, 'btn_kilavuz'):
-                self.btn_kilavuz.setStyleSheet("""
-                    QPushButton {
-                        background-color: #252525;
-                        color: #e0e0e0;
-                        border: 1.5px solid #444444;
-                        border-radius: 5px;
-                        padding: 5px 12px;
-                        font-weight: bold;
-                        font-size: 11px;
-                        margin-top: 2px;
-                        margin-bottom: 2px;
-                    }
-                    QPushButton:hover {
-                        background-color: #333333;
-                        color: #00ffcc;
-                        border: 1.5px solid #00ffcc;
-                    }
-                """)
+                self.btn_kilavuz.setStyleSheet(stil_koyu_proje_btn)
             if hasattr(self, 'btn_YapayZeka'):
                 self.btn_YapayZeka.setStyleSheet("""
                     QPushButton {

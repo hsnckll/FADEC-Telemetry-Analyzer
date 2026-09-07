@@ -841,6 +841,9 @@ class SensorGrafikKarti(QtWidgets.QFrame):
             mouse_noktasi = self.plot_widget.plotItem.vb.mapSceneToView(pos)
             mx, my = mouse_noktasi.x(), mouse_noktasi.y()
             
+            # F tuşu (kısayol) ile odak çağırmada kullanılmak üzere farenin son X pozisyonunu kaydet
+            self.son_fare_x = mx
+            
             is_scatter = getattr(self, 'grafik_tipi', 'line') == 'scatter'
             try:
                 gercekZaman = int(round(mx))
@@ -1173,16 +1176,43 @@ class SensorGrafikKarti(QtWidgets.QFrame):
                 self.odak_bolgesi.setBrush(pg.mkBrush(0, 255, 204, 30))
                 self.odak_bolgesi.setHoverBrush(pg.mkBrush(0, 255, 204, 70))
                 
-                # Sınır çizgilerini turkuaz yap
+                # Sınır çizgilerini turkuaz yap, üzerine gelince kırmızı ve kalın olsun
                 for kenarCizgisi in self.odak_bolgesi.lines:
-                    kenarCizgisi.setPen(pg.mkPen('#00ffcc', width=1.5))
+                    kenarCizgisi.setPen(pg.mkPen('#00ffcc', width=3))
+                    kenarCizgisi.setHoverPen(pg.mkPen(color='r', width=5))
+                    kenarCizgisi.setCursor(QtCore.Qt.SizeHorCursor)
                     
                 self.plot_widget.addItem(self.odak_bolgesi)
                 self.odak_bolgesi.sigRegionChanged.connect(self.odak_degisti_senkronize_et)
+                
+                # Çift tıklama olayını yakalayarak odağı fareye çağırma altyapısı
+                self.plot_widget.scene().sigMouseClicked.connect(self.grafik_cift_tiklandi)
         else:
             if getattr(self, 'odak_bolgesi', None) is not None:
                 self.plot_widget.removeItem(self.odak_bolgesi)
                 self.odak_bolgesi = None
+
+    def grafik_cift_tiklandi(self, event):
+        """ Grafiğe çift tıklandığında odak bölgesini tam tıklanılan X koordinatına ışınlar """
+        if event.double() and getattr(self, 'odak_bolgesi', None) is not None:
+            pos = self.plot_widget.plotItem.vb.mapSceneToView(event.scenePos())
+            self.odak_bolgesini_fareye_tasi(pos.x())
+            
+    def odak_bolgesini_fareye_tasi(self, hedef_x=None):
+        """ Kısayol (F tuşu) veya çift tıklama ile çağırıldığında odak bölgesinin genişliğini koruyarak hedef X'e ışınlar """
+        if getattr(self, 'odak_bolgesi', None) is None:
+            return
+            
+        x_noktasi = hedef_x if hedef_x is not None else getattr(self, 'ham_x', None)
+        if x_noktasi is None:
+            return
+            
+        mevcut_bas, mevcut_bit = self.odak_bolgesi.getRegion()
+        genislik = mevcut_bit - mevcut_bas
+        yeni_bas = x_noktasi - (genislik / 2)
+        yeni_bit = x_noktasi + (genislik / 2)
+        
+        self.odak_bolgesi.setRegion([yeni_bas, yeni_bit])
 
     def odak_degisti_senkronize_et(self, region_item):
         if getattr(self, '_odak_guncelleniyor', False):

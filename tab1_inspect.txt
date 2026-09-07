@@ -1,0 +1,100 @@
+3930:         """
+3931:         @brief Tablo başlığındaki sensör sütununa tıklandığında eğriyi çizer veya kaldırır (Toggle).
+3932:         @param sutun (int) Tıklanan sütun indeksi.
+3933:         """
+3934:         if self.df is None or len(self.df) == 0:
+3935:             return
+3936: 
+3937:         secilen_sutun = self.df.columns[sutun]
+3938:         ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
+3939: 
+3940:         # Ana zaman sütunu veya sayısal olmayan (metin/tarih) sütunlar grafiğe çizilemez
+3941:         if secilen_sutun == ana_zaman or not pd.api.types.is_numeric_dtype(self.df[secilen_sutun]):
+3942:             return
+3943: 
+3944:         if not hasattr(self, 'aktif_ham_veriler'):
+3945:             self.aktif_ham_veriler = {}
+3946: 
+3947:         if secilen_sutun in self.aktif_cizgiler:
+3948:             # Eğriyi Kaldır
+3949:             self.analiz_grafigi.removeItem(self.aktif_cizgiler.pop(secilen_sutun))
+3950:             self.aktif_ham_veriler.pop(secilen_sutun, None)
+3951: 
+3952:             for satir in range(self.tbl_istatistik.rowCount()):
+3953:                 item = self.tbl_istatistik.item(satir, 0)
+3954:                 if item and item.text() == secilen_sutun:
+3955:                     self.tbl_istatistik.removeRow(satir)
+3956:                     break
+3957:         else:
+3958:             # LTTB ile Eğriyi Çiz
+3959:             try:
+3960:                 x_raw = self.df["Zaman_Index"].to_numpy(dtype=np.float64, copy=False)
+3961:                 y_raw = pd.to_numeric(self.df[secilen_sutun], errors='coerce').to_numpy(dtype=np.float64, copy=False)
+3962:             except Exception:
+3963:                 return
+3964: 
+3965:             self.aktif_ham_veriler[secilen_sutun] = (x_raw, y_raw)
+3966: 
+3967:             x_cizim, y_cizim = lttb_downsample(x_raw, y_raw, threshold=1500)
+3968:             renk = self.sensor_rengi_getir(secilen_sutun)
+3969: 
+3970:             yeniCizgi = self.analiz_grafigi.plot(
+3971:                 x=x_cizim, y=y_cizim,
+3972:                 pen=pg.mkPen(color=renk, width=1),
+3973:                 name=secilen_sutun
+3974:             )
+3975:             yeniCizgi.setZValue(0)
+3976:             self.aktif_cizgiler[secilen_sutun] = yeniCizgi
+3977: 
+3978:             # İstatistikleri Ekle (Sadece satır oluşturulur, değerler güncelleyici ile atanır)
+3979:             kacTaneSatir = self.tbl_istatistik.rowCount()
+3980:             self.tbl_istatistik.insertRow(kacTaneSatir)
+3981:             self.tbl_istatistik.setItem(kacTaneSatir, 0, QTableWidgetItem(secilen_sutun))
+3982:             self.tbl_istatistik.setItem(kacTaneSatir, 1, QTableWidgetItem("-"))
+3983:             self.tbl_istatistik.setItem(kacTaneSatir, 2, QTableWidgetItem("-"))
+3984:             self.tbl_istatistik.setItem(kacTaneSatir, 3, QTableWidgetItem("-"))
+3985:             
+3986:             self.istatistik_guncelle()
+3987: 
+3988:         self.analiz_grafigi.setTitle(f" {secilen_sutun} - Zaman Analiz Grafiği", color="w", size="11pt")
+3989:         self.analiz_grafigi.autoRange()
+3990: 
+3991:     def HataBloklariUretme(self, total_satir):
+3992:         """
+3993:         @brief Test amaçlı rastgele yapay hata blokları üreten yardımcı metod.
+3994:         @param total_satir (int) Üretilecek toplam veri satır sayısı.
+3995:         @return (np.ndarray) 0 ve 1'lerden oluşan hata dizisi.
+3996:         """
+3997:         hata_kolonu = np.zeros(total_satir, dtype=int)
+3998:         hedef_hata_sayisi = int(total_satir * 0.3)
+3999:         HataSayisi = 0
+4000:         minHataAraligi = 180
+4001:         maxHataAraligi = 1080
+4002: 
+4003:         while HataSayisi < hedef_hata_sayisi:
+4004:             hataBloguUzunlugu = np.random.randint(minHataAraligi, maxHataAraligi)
+4005:             baslangicNoktasi = random.randint(0, total_satir - hataBloguUzunlugu - 1)
+4006:             bitis = baslangicNoktasi + hataBloguUzunlugu
+4007: 
+4008:             if np.sum(hata_kolonu[baslangicNoktasi:bitis]) == 0:
+4009:                 hata_kolonu[baslangicNoktasi:bitis] = 1
+4010:                 HataSayisi += hataBloguUzunlugu
+4011: 
+4012:         return hata_kolonu
+4013: 
+4014:     def heatmapGoster(self):
+4015:         """
+4016:         @brief Isı Haritası (Heatmap) analiz penceresini açar.
+4017:         """
+4018:         if self.df is None:
+4019:             return
+4020:         self.heatmap_arayuzu = HeatmapPenceresi(self.df, self)
+4021:         self.heatmap_arayuzu.exec_()
+4022: 
+4023:     # ==========================================================================
+4024:     # 15. DETAYLI HATA ANALİZİ (TAB 3)
+4025:     # ==========================================================================
+4026: 
+4027:     def genel_secimleri_temizle(self):
+4028:         """
+4029:         @brief Detaylı hata analizi sekmesindeki tüm sensör ve hata seçimlerini temizler.
