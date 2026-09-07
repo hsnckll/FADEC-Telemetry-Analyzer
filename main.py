@@ -4276,14 +4276,98 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
 
         self.timeline_lod_guncelle()
 
-    def grafik_nokta_tiklandi(self, plot, points):
+    def hata_noktasi_otomatik_zoom(self, x_pos):
         """
-        @brief Timeline hata noktasına tıklandığında anlık tüm sensör değerlerini ve değişimlerini gösterir.
+        @brief Hata noktasına çift tıklandığında -30sn ve +30sn aralığına odaklanır (Auto-Zoom).
+               Y eksenini de bu dar aralıktaki tüm aktif sensörleri (örneğin 100 ve 2500 değerindekiler)
+               kadrajın içine tam sığdıracak şekilde akıllı olarak ayarlar.
+        @param x_pos (float/int) Tıklanan hata noktasının X (Zaman_Index) koordinatı.
+        """
+        if getattr(self, 'df', None) is None or self.df.empty:
+            return
+
+        # Zaman adımı (dt) tespiti
+        dt = 0.1
+        if hasattr(self, 'zaman_ekseni_genel') and hasattr(self.zaman_ekseni_genel, 'dt_saniye'):
+            dt = self.zaman_ekseni_genel.dt_saniye
+        if not dt or dt <= 0:
+            dt = 0.1
+
+        # 30 saniyelik veri indeksi adımı (Örn: 100ms ise 300 satır)
+        pencere_30sn = int(round(30.0 / dt))
+        total_rows = len(self.df)
+
+        x_min_hedef = max(1, int(round(x_pos - pencere_30sn)))
+        x_max_hedef = min(total_rows, int(round(x_pos + pencere_30sn)))
+
+        # Kenarlarda (başlangıç veya bitiş) ise 60 saniyelik tam pencereyi koru
+        toplam_pencere = pencere_30sn * 2
+        if x_min_hedef == 1 and total_rows >= toplam_pencere:
+            x_max_hedef = min(total_rows, 1 + toplam_pencere)
+        elif x_max_hedef == total_rows and total_rows >= toplam_pencere:
+            x_min_hedef = max(1, total_rows - toplam_pencere)
+
+        # Tab 3'te seçili olan sensörleri topla
+        secili_sensorler = []
+        if hasattr(self, 'list_sensorSecim'):
+            for i in range(self.list_sensorSecim.count()):
+                item = self.list_sensorSecim.item(i)
+                if item.checkState() == QtCore.Qt.Checked:
+                    secili_sensorler.append(item.text())
+
+        if not secili_sensorler and hasattr(self, 'aktif_cizgiler_genel'):
+            secili_sensorler = list(self.aktif_cizgiler_genel.keys())
+
+        # Bu 60 saniyelik zaman dilimindeki verileri kes ve Min/Max analiz et
+        idx_bas = max(0, x_min_hedef - 1)
+        idx_bit = min(total_rows, x_max_hedef)
+        df_dilim = self.df.iloc[idx_bas:idx_bit]
+
+        global_y_min = float('inf')
+        global_y_max = float('-inf')
+
+        for sensor in secili_sensorler:
+            if sensor in df_dilim.columns:
+                s_vals = pd.to_numeric(df_dilim[sensor], errors='coerce').dropna().values
+                if len(s_vals) > 0:
+                    s_min = float(np.min(s_vals))
+                    s_max = float(np.max(s_vals))
+                    if s_min < global_y_min:
+                        global_y_min = s_min
+                    if s_max > global_y_max:
+                        global_y_max = s_max
+
+        # Farklı büyüklükteki sensörlerin (100 ile 2500 gibi) hepsini kadraja sığdır
+        if global_y_min != float('inf') and global_y_max != float('-inf'):
+            fark_y = global_y_max - global_y_min
+            if fark_y <= 0:
+                fark_y = abs(global_y_max) * 0.1 if global_y_max != 0 else 1.0
+
+            # Alt kısımda timeline yazıları/noktaları için %18 nefes payı
+            # Üst kısımda sensör çizgisi tavana yapışmasın diye %5 nefes payı
+            y_alt = global_y_min - (fark_y * 0.18)
+            y_ust = global_y_max + (fark_y * 0.05)
+            self.GenelHataBloklari.setYRange(y_alt, y_ust, padding=0)
+
+        # X eksenini tam 30sn öncesi ve 30sn sonrasına ayarla
+        self.GenelHataBloklari.setXRange(x_min_hedef, x_max_hedef, padding=0)
+
+        # Yüksek çözünürlük (LOD) ve timeline yazılarını yeni zoom'a göre tazele
+        if hasattr(self, 'grafik_lod_guncelle_genel'):
+            self.grafik_lod_guncelle_genel()
+        if hasattr(self, 'timeline_lod_guncelle'):
+            self.timeline_lod_guncelle()
+
+    def grafik_nokta_tiklandi(self, plot, points, ev=None):
+        """
+        @brief Timeline hata noktasına tek tıklandığında anlık sensör değerlerini gösterir.
+               Çift tıklandığında ise hatanın 30sn öncesi ve 30sn sonrasına akıllı auto-zoom yapar.
         @param plot (PlotItem) Tıklanan grafik nesnesi.
         @param points (list of SpotItem) Tıklanan nokta nesneleri.
+        @param ev (MouseClickEvent) Tıklama olay verisi.
         """
-        if hasattr(self, 'son_bilgi_kutusu') and self.son_bilgi_kutusu is not None:
-            self.GenelHataBloklari.removeItem(self.son_bilgi_kutusu)
+        if not points:
+            return
 
         nokta = points[0]
         veri = nokta.data()
@@ -4291,6 +4375,40 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             veri = {name: veri[name] for name in veri.dtype.names}
 
         nokta_id = f"{veri.get('zaman', '')}_{veri.get('durum', '')}"
+
+        # --- ÇİFT TIKLAMA TESPİTİ (DOUBLE CLICK DETECTION) ---
+        simdi = time.time()
+        son_tiklama = getattr(self, '_son_nokta_tiklama_zamani', 0)
+        son_nokta_id = getattr(self, '_son_nokta_tiklanan_id', None)
+
+        cift_tiklandi = False
+        if ev is not None and hasattr(ev, 'double') and ev.double():
+            cift_tiklandi = True
+        elif son_nokta_id == nokta_id and (simdi - son_tiklama) < 0.45:
+            cift_tiklandi = True
+
+        self._son_nokta_tiklama_zamani = simdi
+        self._son_nokta_tiklanan_id = nokta_id
+
+        if cift_tiklandi:
+            # Çift tıklandıysa açık bilgi kutusunu temizle ve auto-zoom çalıştır
+            if hasattr(self, 'son_bilgi_kutusu') and self.son_bilgi_kutusu is not None:
+                try:
+                    self.GenelHataBloklari.removeItem(self.son_bilgi_kutusu)
+                except Exception:
+                    pass
+                self.son_bilgi_kutusu = None
+                self.son_tiklanan_nokta_id = None
+
+            x_pos = veri.get('x', None)
+            if x_pos is not None:
+                self.hata_noktasi_otomatik_zoom(x_pos)
+            return
+
+        # --- TEK TIKLAMA: BİLGİ KUTUCUĞU (TOOLTIP) AÇ / KAPA ---
+        if hasattr(self, 'son_bilgi_kutusu') and self.son_bilgi_kutusu is not None:
+            self.GenelHataBloklari.removeItem(self.son_bilgi_kutusu)
+
         if hasattr(self, 'son_tiklanan_nokta_id') and self.son_tiklanan_nokta_id == nokta_id:
             self.son_bilgi_kutusu = None
             self.son_tiklanan_nokta_id = None
@@ -4649,8 +4767,6 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                     param_data = json.load(f)
                     self.LIMITLER = {k: (float(v[0]), float(v[1])) for k, v in param_data.items() if len(v) >= 2}
                     self.tanimli_sensorler = list(param_data.keys())
-                    print(
-                        f"C++ / Klasör üzerinden {len(self.tanimli_sensorler)} adet sensör ve limit başarıyla yüklendi: {json_yolu}")
             except Exception as e:
                 print(f"JSON okuma hatası: {e}")
 
