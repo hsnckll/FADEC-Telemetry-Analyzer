@@ -24,3 +24,5 @@ env/
 *.7z
 *.tar.gz
 *.csv
+*inspect*.txt
+*_tmp.*
