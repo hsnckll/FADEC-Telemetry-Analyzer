@@ -6,7 +6,7 @@ Bu döküman, Python (PyQt5) ile geliştirilen bu projeyi Windows üzerinde kuru
 Öncelikle bir komut satırı (CMD, PowerShell veya VS Code Terminali) açın ve projenizin ana dizinine geçiş yapın:
 
 ```bash
-cd C:\Users\petti\FadecDataVisualization
+cd C:\Users\KullanıcıAdı\IndirdiğinizDosyaninAdi
 ```
 
 ## Adım 2: PyInstaller'ı Yükleyin
