@@ -20,7 +20,7 @@ pip install pyinstaller
 Terminalde aşağıdaki kodu çalıştırarak derleme işlemini başlatın. Bu komuttaki `--noconsole` parametresi uygulamanın arkasında siyah bir CMD penceresi çıkmasını engeller, `--onefile` ise her şeyi tek bir `.exe` dosyasında toplar.
 
 ```bash
-pyinstaller --noconsole --onefile main.py
+pyinstaller main.spec --clean --noconfirm
 ```
 
 *(Opsiyonel: Eğer programınıza bir ikon eklemek isterseniz komutu şu şekilde çalıştırabilirsiniz: `pyinstaller --noconsole --onefile --icon=ikonunuz.ico main.py`)*
@@ -30,4 +30,4 @@ pyinstaller --noconsole --onefile main.py
 Oluşturulan `main.exe` dosyası bu klasörün içindedir. Programın adını isterseniz değiştirebilirsiniz.
 
 **⚠️ ÖNEMLİ BİLGİ:** 
-Program çalıştığında `parameters.json` gibi dışarıdan okuduğu yapılandırma dosyalarına ihtiyaç duyar. `.exe` dosyasını `dist` klasöründen alıp nereye taşırsanız taşıyın, o veri dosyalarını da mutlaka `.exe`'nin **yanına (aynı klasöre)** kopyalamayı unutmayın. Aksi takdirde program parametreleri bulamayacağı için hata verebilir veya açılmayabilir.
+Program çalıştığında `parameters.json` gibi dışarıdan okuduğu yapılandırma dosyalarına ihtiyaç duyar. `.exe` dosyasını `dist` klasöründen alıp nereye taşırsanız taşıyın, o veri dosyalarını da mutlaka `.exe`'nin **yanına (aynı klasöre)** kopyalamayı unutmayın. Aksi takdirde program parametreleri bulamayacağı için hata verebilir veya açılmayabilir. Yada QML üzerinden `parameters.json` dosyasının yolunu belirtiniz. 
