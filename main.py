@@ -36,6 +36,7 @@ import time
 import random
 import ctypes
 import datetime
+import warnings
 from collections import deque
 
 # ==============================================================================
@@ -792,6 +793,67 @@ def csv_ayrac_tespit_et(dosya_yolu):
     return ','
 
 
+def zaman_kolonu_tespit_et(df):
+    """
+    @brief DataFrame içerisindeki zaman/tarih kolonunu kolon sırasından bağımsız olarak dinamik tespit eder.
+    @param df (pd.DataFrame) Taranacak veri tablosu.
+    @return (str) Tespit edilen zaman kolonunun adı.
+    @details
+      1. Semantik Arama: Kolon adında time, zaman, timestamp, datetime, date, saat gibi anahtar kelimeler arar
+         ve değerlerin gerçekten zaman veya monoton artan sayı içerip içermediğini doğrular.
+      2. İçerik ve Tip Analizi: Kolon adı belirsiz olsa bile hücre değerlerinde tarih/saat
+         ayraçları (: - /) içeren ve pd.to_datetime ile geçerli zaman dizisine dönüşen ilk kolonu seçer.
+      3. Geriye Dönük Uyumluluk (Fallback): Hiçbir zaman kolonu doğrulanamazsa güvenle altyapı harici ilk kolona döner.
+    """
+    if df is None or df.empty or len(df.columns) == 0:
+        return None
+
+    altyapi_haric = {'zaman_index', 'zaman_gorsel'}
+    olasi_anahtarlar = ['zaman', 'time', 'timestamp', 'datetime', 'date', 'saat', 't_sec', 't_saniye']
+
+    # 1. Aşama: Kolon isimlerinde semantik arama ve örnek veri doğrulama
+    for col in df.columns:
+        c_low = str(col).lower().strip()
+        if c_low in altyapi_haric:
+            continue
+        for anahtar in olasi_anahtarlar:
+            if anahtar in c_low:
+                sample = df[col].dropna().head(10)
+                if len(sample) >= 2:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        sample_dt = pd.to_datetime(sample.astype(str), errors='coerce')
+                    if sample_dt.notna().sum() >= len(sample) * 0.7:
+                        return col
+                    sample_num = pd.to_numeric(sample, errors='coerce')
+                    if sample_num.notna().sum() >= len(sample) * 0.7:
+                        diffs = np.diff(sample_num.dropna().values)
+                        if len(diffs) > 0 and np.all(diffs > 0):
+                            return col
+
+    # 2. Aşama: Kolon ismi belirsiz olsa bile veri içeriğini tara (Format Analizi)
+    for col in df.columns:
+        c_low = str(col).lower().strip()
+        if c_low in altyapi_haric:
+            continue
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        sample = df[col].dropna().head(15)
+        if len(sample) < 2:
+            continue
+        sample_str = sample.astype(str)
+        if sample_str.str.contains(r'[:\-/]').sum() >= len(sample) * 0.7:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sample_dt = pd.to_datetime(sample_str, errors='coerce')
+            if sample_dt.notna().sum() >= len(sample) * 0.7:
+                return col
+
+    # 3. Aşama: Güvenli geri dönüş (Varsayılan olarak altyapı harici ilk kolon)
+    gecerli_kolonlar = [c for c in df.columns if str(c).lower().strip() not in altyapi_haric]
+    return gecerli_kolonlar[0] if gecerli_kolonlar else df.columns[0]
+
+
 def dosya_turu_ve_frekans_analiz_et(dosya_yolu):
     """
     @brief CSV/Excel dosyasını kolon indekslerine veya isimlerine BAKMAKSIZIN:
@@ -813,24 +875,20 @@ def dosya_turu_ve_frekans_analiz_et(dosya_yolu):
         if df_on.empty or len(df_on.columns) < 2:
             return 'UNKNOWN', None, len(df_on.columns) if not df_on.empty else 0
 
-        # 1. Datetime Formatındaki Zaman Kolonunu Konumundan Bağımsız Dinamik Tespit Et
-        zaman_kolonu = None
+        # 1. Zaman Kolonunu Konumundan Bağımsız Dinamik Tespit Et ve dt Frekansını Hesapla
+        zaman_kolonu = zaman_kolonu_tespit_et(df_on)
         dt_ms = None
 
-        for col in df_on.columns:
-            if not pd.api.types.is_numeric_dtype(df_on[col]):
-                seri = pd.to_datetime(df_on[col].astype(str), errors='coerce')
-                if seri.iloc[:3].notna().sum() >= 2:
-                    t0, t1 = seri.iloc[0], seri.iloc[1]
-                    if pd.notna(t0) and pd.notna(t1):
-                        fark = abs((t1 - t0).total_seconds() * 1000.0)
-                        if 0.1 <= fark <= 86400000.0:
-                            zaman_kolonu = col
-                            dt_ms = fark
-                            break
-
-        if zaman_kolonu is None:
-            zaman_kolonu = df_on.columns[0]
+        if zaman_kolonu is not None and zaman_kolonu in df_on.columns and len(df_on) >= 2:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                seri = pd.to_datetime(df_on[zaman_kolonu].astype(str), errors='coerce')
+            if seri.iloc[:2].notna().sum() >= 2:
+                t0, t1 = seri.iloc[0], seri.iloc[1]
+                if pd.notna(t0) and pd.notna(t1):
+                    fark = abs((t1 - t0).total_seconds() * 1000.0)
+                    if 0.1 <= fark <= 86400000.0:
+                        dt_ms = fark
 
         # 2. Tespit Edilen Zaman Kolonu HARİÇ Kalan Kolonların Matematiksel Dağılımı
         kalan_kolonlar = [c for c in df_on.columns if c != zaman_kolonu]
@@ -1499,8 +1557,9 @@ class YuklemeThread(QtCore.QThread):
             # 3. ZAMAN EŞLEŞTİRME VE ENTEGRASYON
             self.progress_signal.emit(96, "Zaman İndeksleri ve Hata Blokları Eşleştiriliyor...")
 
-            data_zaman_kolonu = df_data.columns[0]
-            event_zaman_kolonu = df_event.columns[0]
+            # Zaman kolonlarını dosyadaki konumundan ve sırasından bağımsız dinamik tespit et
+            data_zaman_kolonu = zaman_kolonu_tespit_et(df_data)
+            event_zaman_kolonu = zaman_kolonu_tespit_et(df_event)
 
             # Eğer kullanıcı manuel simülasyon ayarladıysa
             if self.simule_baslangic is not None and self.simule_frekans is not None:
@@ -1847,26 +1906,40 @@ class RadarPenceresi(QtWidgets.QDialog):
         ax = fig.add_subplot(111, polar=True)
         ax.set_facecolor('#1a1a2e')
 
+        max_skor = max(skorlar) if max(skorlar) > 0 else 1.0
+        r_max = max_skor * 1.32
+        ax.set_ylim(0, r_max)
+
         ax.plot(acilar, skorlar, color='#f39c12', linewidth=2.5, linestyle='solid', zorder=3)
         ax.fill(acilar, skorlar, color='#f39c12', alpha=0.35, zorder=2)
 
         for i in range(len(acilar) - 1):
-            ax.plot(acilar[i], skorlar[i], 'o', color='#f39c12', markersize=10,
+            ax.plot(acilar[i], skorlar[i], 'o', color='#f39c12', markersize=9,
                     markeredgecolor='white', markeredgewidth=2, zorder=5)
 
             deger = skorlar[i]
             etiket = "~0" if deger < 0.01 else f"{deger:.4f}"
-            ax.text(acilar[i], skorlar[i] + (max(skorlar) * 0.08 if max(skorlar) > 0 else 0.1),
-                    etiket, ha='center', va='bottom', fontsize=9, fontweight='bold', color='white',
-                    bbox=dict(boxstyle='round,pad=0.2', facecolor='#2d2d50', edgecolor='none', alpha=0.8))
+            if deger < max_skor * 0.15:
+                r_text = deger + (max_skor * 0.18)
+            else:
+                r_text = deger + (max_skor * 0.11)
+
+            ax.text(acilar[i], r_text,
+                    etiket, ha='center', va='center', fontsize=8.5, fontweight='bold', color='white',
+                    bbox=dict(boxstyle='round,pad=0.25', facecolor='#2d2d50', edgecolor='#4d4d6e', alpha=0.9),
+                    zorder=6)
 
         ax.set_xticks(acilar[:-1])
         ax.set_xticklabels(gecerli_sensorler[:-1], color='#e0e0e0', fontsize=9, fontweight='bold')
-        ax.tick_params(colors='#aaaaaa', labelsize=8)
+        ax.tick_params(axis='x', pad=24, colors='#e0e0e0', labelsize=8.5)
+        ax.tick_params(axis='y', colors='#ffffff', labelsize=8.5)
+        for t in ax.yaxis.get_ticklabels():
+            t.set_color('#ffffff')
+            t.set_fontweight('bold')
         ax.grid(color='#4d4d6e', linestyle='-', linewidth=0.6, alpha=0.7)
         ax.spines['polar'].set_color('#4d4d6e')
-        ax.set_title("Sensör Sapma Analizi (Z-Score)", color='white', pad=25, fontsize=13, fontweight='bold')
-        fig.tight_layout()
+        ax.set_title("Sensör Sapma Analizi (Z-Score)", color='white', pad=35, fontsize=13, fontweight='bold')
+        fig.subplots_adjust(top=0.86, bottom=0.14, left=0.16, right=0.84)
 
         if self.ui.widget_Radar.layout() is not None:
             eski_layout = self.ui.widget_Radar.layout()
@@ -2809,6 +2882,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             self.vLine_hata.hide()
         if hasattr(self, 'crosshair_yazi_hata'):
             self.crosshair_yazi_hata.hide()
+        self.aktif_hata_araligi = None
 
 
     def grafik_lod_guncelle_genel(self):
@@ -3126,15 +3200,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         self.hata_kategorileri = hata_kolonlari
 
         # 1. Ana Zaman Kolonunu Konum ve İsimden Bağımsız Dinamik Tespit Et
-        self.ana_zaman_kolonu = None
-        for col in self.df.columns:
-            if not pd.api.types.is_numeric_dtype(self.df[col]):
-                seri = pd.to_datetime(self.df[col].iloc[:3].astype(str), errors='coerce')
-                if seri.notna().sum() >= 2:
-                    self.ana_zaman_kolonu = col
-                    break
-        if self.ana_zaman_kolonu is None and len(self.df.columns) > 0:
-            self.ana_zaman_kolonu = self.df.columns[0]
+        self.ana_zaman_kolonu = zaman_kolonu_tespit_et(self.df)
 
         self.veri_tablosu.setUpdatesEnabled(False)
         self.tabloyu_doldur()
@@ -3173,7 +3239,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         @brief Limit ayarları penceresini açar ve uygulanan seçimlere göre limit çizgilerini günceller.
         """
         aktif_sensorler = list(self.aktif_cizgiler.keys())
-        kolon_Adlari = [c for c in self.df.columns if c != "Zaman"]
+        ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
+        haric = {'zaman_index', 'zaman_gorsel'}
+        if ana_zaman:
+            haric.add(str(ana_zaman).lower())
+        kolon_Adlari = [c for c in self.df.columns if str(c).lower() not in haric and c != "Zaman"]
 
         self.ayarpenceresi = AyarlarPenceresi(aktif_sensorler, kolon_Adlari)
         self.ayarpenceresi.exec_()
@@ -3322,7 +3392,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         aranan_kucuk = aranan.strip().lower()
         ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
         if ana_zaman is None and len(df_tablo.columns) > 0:
-            ana_zaman = df_tablo.columns[0]
+            ana_zaman = zaman_kolonu_tespit_et(df_tablo)
 
         altyapi_kolonlari = {"zaman_index", "zaman_gorsel"}
 
@@ -3335,7 +3405,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 continue
 
             # Ana zaman referans kolonu her zaman görünür kalır
-            if col_name == ana_zaman or col_idx == 0:
+            if col_name == ana_zaman:
                 self.hata_Tablo.setColumnHidden(col_idx, False)
                 continue
 
@@ -3438,6 +3508,7 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             return
 
         baslangic, bitis = self.hataBloklarıİndeksleri[self.seciliHata]
+        self.aktif_hata_araligi = (baslangic, bitis)
         hatalıVeriler = self.df.iloc[baslangic:bitis]
         hatalıVerilerZamanAraligi = hatalıVeriler["Zaman_Index"].values
 
@@ -3695,6 +3766,8 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
     def mouseHareketEtti(self, kordinat):
         """
         @brief Ana grafikte fare hareket ettiğinde crosshair ve anlık sensör değerleri etiketini günceller.
+               Veri sınırları dışına çıkıldığında (başlangıç öncesi / bitiş sonrası) veya fare grafik alanını
+               terk ettiğinde crosshair ve değer kutusu dinamik olarak gizlenir.
         @param kordinat (tuple) Fare sahne koordinatı.
         """
         if QtWidgets.QApplication.mouseButtons() != QtCore.Qt.NoButton:
@@ -3706,48 +3779,67 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if not getattr(self, 'aktif_cizgiler', None):
             if hasattr(self, 'vLine'):
                 self.vLine.hide()
+            if hasattr(self, 'hLine'):
+                self.hLine.hide()
             if hasattr(self, 'crosshair_yazi'):
                 self.crosshair_yazi.hide()
             return
 
         pos = kordinat[0]
-        if self.analiz_grafigi.sceneBoundingRect().contains(pos):
-            mouse_noktasi = self.analiz_grafigi.plotItem.vb.mapSceneToView(pos)
-            try:
-                gercekZaman = int(round(mouse_noktasi.x()))
-            except (OverflowError, ValueError):
-                return
-            satir_idx = gercekZaman - 1
+        if not self.analiz_grafigi.sceneBoundingRect().contains(pos):
+            if hasattr(self, 'vLine'):
+                self.vLine.hide()
+            if hasattr(self, 'hLine'):
+                self.hLine.hide()
+            if hasattr(self, 'crosshair_yazi'):
+                self.crosshair_yazi.hide()
+            return
 
-            if satir_idx < 0 or satir_idx >= len(self.df):
-                return
-                
-            self.son_fare_x = gercekZaman
+        mouse_noktasi = self.analiz_grafigi.plotItem.vb.mapSceneToView(pos)
+        try:
+            gercekZaman = int(round(mouse_noktasi.x()))
+        except (OverflowError, ValueError):
+            return
+        satir_idx = gercekZaman - 1
 
-            self.vLine.setPos(gercekZaman)
-            self.vLine.show()
-            self.hLine.setPos(-9999)
+        # Veri setinin solunda (başlangıç öncesi) veya sağında (bitiş sonrası) crosshair ve etiketi gizle
+        if satir_idx < 0 or satir_idx >= len(self.df):
+            if hasattr(self, 'vLine'):
+                self.vLine.hide()
+            if hasattr(self, 'hLine'):
+                self.hLine.hide()
+            if hasattr(self, 'crosshair_yazi'):
+                self.crosshair_yazi.hide()
+            return
+            
+        self.son_fare_x = gercekZaman
 
-            if "Zaman_Gorsel" in self.df.columns:
-                gorsel_saat = str(self.df.iat[satir_idx, self.df.columns.get_loc("Zaman_Gorsel")])
-            else:
-                gorsel_saat = str(gercekZaman)
+        self.vLine.setPos(gercekZaman)
+        self.vLine.show()
+        self.hLine.setPos(-9999)
 
-            satirlar = [f"<span style='color: #38bdf8; font-weight: bold;'>Zaman: {gorsel_saat}</span><br>"]
-            for kolonadi, cizgi_nesnesi in self.aktif_cizgiler.items():
-                if kolonadi in self.df.columns:
-                    col_idx = self.df.columns.get_loc(kolonadi)
-                    deger = self.df.iat[satir_idx, col_idx]
-                    renk = cizgi_nesnesi.opts['pen'].color().name()
-                    satirlar.append(f"<span style='color: {renk};'>{kolonadi} : {deger:.2f}</span>")
+        if "Zaman_Gorsel" in self.df.columns:
+            gorsel_saat = str(self.df.iat[satir_idx, self.df.columns.get_loc("Zaman_Gorsel")])
+        else:
+            gorsel_saat = str(gercekZaman)
 
-            self.crosshair_yazi.setHtml("<br>".join(satirlar))
-            self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
-            self.crosshair_yazi.show()
+        satirlar = [f"<span style='color: #38bdf8; font-weight: bold;'>Zaman: {gorsel_saat}</span><br>"]
+        for kolonadi, cizgi_nesnesi in self.aktif_cizgiler.items():
+            if kolonadi in self.df.columns:
+                col_idx = self.df.columns.get_loc(kolonadi)
+                deger = self.df.iat[satir_idx, col_idx]
+                renk = cizgi_nesnesi.opts['pen'].color().name()
+                satirlar.append(f"<span style='color: {renk};'>{kolonadi} : {deger:.2f}</span>")
+
+        self.crosshair_yazi.setHtml("<br>".join(satirlar))
+        self.crosshair_yazi.setPos(gercekZaman, mouse_noktasi.y())
+        self.crosshair_yazi.show()
 
     def mouseHareketEtti_Hata(self, kordinat):
         """
         @brief Hata grafiğinde fare hareket ettiğinde crosshair ve limit aşım durumunu günceller.
+               Sadece seçili hata bloğunun sınırları içindeyken değerler gösterilir; hatalı olmayan
+               bölgelerde veya grafik sınırları dışında crosshair ve değer kutusu gizlenir.
         @param kordinat (tuple) Fare sahne koordinatı.
         """
         if self.df is None or len(self.df) == 0:
@@ -3757,57 +3849,98 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         if not getattr(self, 'aktif_cizgiler_hata', None):
             if hasattr(self, 'vLine_hata'):
                 self.vLine_hata.hide()
+            if hasattr(self, 'hLine_hata'):
+                self.hLine_hata.hide()
             if hasattr(self, 'crosshair_yazi_hata'):
                 self.crosshair_yazi_hata.hide()
             return
 
         pos = kordinat[0]
-        if self.hata_grafik.sceneBoundingRect().contains(pos):
-            mouse_noktasi = self.hata_grafik.plotItem.vb.mapSceneToView(pos)
-            try:
-                gercekZaman = int(round(mouse_noktasi.x()))
-            except (OverflowError, ValueError):
+        if not self.hata_grafik.sceneBoundingRect().contains(pos):
+            if hasattr(self, 'vLine_hata'):
+                self.vLine_hata.hide()
+            if hasattr(self, 'hLine_hata'):
+                self.hLine_hata.hide()
+            if hasattr(self, 'crosshair_yazi_hata'):
+                self.crosshair_yazi_hata.hide()
+            return
+
+        mouse_noktasi = self.hata_grafik.plotItem.vb.mapSceneToView(pos)
+        try:
+            gercekZaman = int(round(mouse_noktasi.x()))
+        except (OverflowError, ValueError):
+            return
+
+        satir_idx = gercekZaman - 1
+        if satir_idx < 0 or satir_idx >= len(self.df):
+            if hasattr(self, 'vLine_hata'):
+                self.vLine_hata.hide()
+            if hasattr(self, 'hLine_hata'):
+                self.hLine_hata.hide()
+            if hasattr(self, 'crosshair_yazi_hata'):
+                self.crosshair_yazi_hata.hide()
+            return
+
+        # Seçili hata bloğu aralığı kontrolü:
+        # Fare hatalı olmayan (eğrinin çizilmediği) bölgelere geçtiğinde crosshair ve kutu gizlenir.
+        aktif_aralik = getattr(self, 'aktif_hata_araligi', None)
+        if aktif_aralik is not None:
+            bas, bit = aktif_aralik
+            if satir_idx < bas or satir_idx >= bit:
+                if hasattr(self, 'vLine_hata'):
+                    self.vLine_hata.hide()
+                if hasattr(self, 'hLine_hata'):
+                    self.hLine_hata.hide()
+                if hasattr(self, 'crosshair_yazi_hata'):
+                    self.crosshair_yazi_hata.hide()
+                return
+        elif getattr(self, 'aktif_ham_veriler_hata', None):
+            first_sensor = next(iter(self.aktif_ham_veriler_hata.values()))
+            zamanlar = first_sensor[0]
+            if len(zamanlar) > 0 and (gercekZaman < zamanlar[0] or gercekZaman > zamanlar[-1]):
+                if hasattr(self, 'vLine_hata'):
+                    self.vLine_hata.hide()
+                if hasattr(self, 'hLine_hata'):
+                    self.hLine_hata.hide()
+                if hasattr(self, 'crosshair_yazi_hata'):
+                    self.crosshair_yazi_hata.hide()
                 return
 
-            satir_idx = gercekZaman - 1
-            if satir_idx < 0 or satir_idx >= len(self.df):
-                return
+        self.vLine_hata.setPos(gercekZaman)
+        self.vLine_hata.show()
+        self.hLine_hata.setPos(-9999)
 
-            self.vLine_hata.setPos(gercekZaman)
-            self.vLine_hata.show()
-            self.hLine_hata.setPos(-9999)
+        if "Zaman_Gorsel" in self.df.columns:
+            gorsel_saat = str(self.df.iat[satir_idx, self.df.columns.get_loc("Zaman_Gorsel")])
+        else:
+            gorsel_saat = str(gercekZaman)
 
-            if "Zaman_Gorsel" in self.df.columns:
-                gorsel_saat = str(self.df.iat[satir_idx, self.df.columns.get_loc("Zaman_Gorsel")])
-            else:
-                gorsel_saat = str(gercekZaman)
+        gosterilecek_metin = f"<span style='color: #38bdf8; font-weight: bold;'>Zaman: {gorsel_saat}</span><br><br>"
 
-            gosterilecek_metin = f"<span style='color: #38bdf8; font-weight: bold;'>Zaman: {gorsel_saat}</span><br><br>"
+        aktif_limitler = getattr(self, 'secili_limit_sensorleri', [])
+        limit_sozlugu = getattr(self, 'LIMITLER', {})
 
-            aktif_limitler = getattr(self, 'secili_limit_sensorleri', [])
-            limit_sozlugu = getattr(self, 'LIMITLER', {})
+        for kolonadi, cizgi_nesnesi in self.aktif_cizgiler_hata.items():
+            if kolonadi in self.df.columns:
+                col_idx = self.df.columns.get_loc(kolonadi)
+                deger = self.df.iat[satir_idx, col_idx]
+                renk_kodu = cizgi_nesnesi.opts['pen'].color().name()
 
-            for kolonadi, cizgi_nesnesi in self.aktif_cizgiler_hata.items():
-                if kolonadi in self.df.columns:
-                    col_idx = self.df.columns.get_loc(kolonadi)
-                    deger = self.df.iat[satir_idx, col_idx]
-                    renk_kodu = cizgi_nesnesi.opts['pen'].color().name()
+                ek_metin = ""
+                if kolonadi in aktif_limitler and kolonadi in limit_sozlugu:
+                    alt_lim, ust_lim = limit_sozlugu[kolonadi]
+                    if deger > ust_lim:
+                        sapma = deger - ust_lim
+                        ek_metin = f" <b style='color: #FF4500;'>(Aşım: +{sapma:.2f})</b>"
+                    elif deger < alt_lim:
+                        sapma = alt_lim - deger
+                        ek_metin = f" <b style='color: #FF4500;'>(Aşım: -{sapma:.2f})</b>"
 
-                    ek_metin = ""
-                    if kolonadi in aktif_limitler and kolonadi in limit_sozlugu:
-                        alt_lim, ust_lim = limit_sozlugu[kolonadi]
-                        if deger > ust_lim:
-                            sapma = deger - ust_lim
-                            ek_metin = f" <b style='color: #FF4500;'>(Aşım: +{sapma:.2f})</b>"
-                        elif deger < alt_lim:
-                            sapma = alt_lim - deger
-                            ek_metin = f" <b style='color: #FF4500;'>(Aşım: -{sapma:.2f})</b>"
+                gosterilecek_metin += f"<span style='color: {renk_kodu};'>{kolonadi} : {deger:.2f}{ek_metin}</span><br>"
 
-                    gosterilecek_metin += f"<span style='color: {renk_kodu};'>{kolonadi} : {deger:.2f}{ek_metin}</span><br>"
-
-            self.crosshair_yazi_hata.setHtml(gosterilecek_metin)
-            self.crosshair_yazi_hata.setPos(gercekZaman, mouse_noktasi.y())
-            self.crosshair_yazi_hata.show()
+        self.crosshair_yazi_hata.setHtml(gosterilecek_metin)
+        self.crosshair_yazi_hata.setPos(gercekZaman, mouse_noktasi.y())
+        self.crosshair_yazi_hata.show()
 
     # ==========================================================================
     # 14. TABLO VE SÜTUN ETKİLEŞİMİ (SANAL MODEL ENTEGRASYONU)
@@ -3978,11 +4111,11 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
         aranan_kucuk = aranan.strip().lower()
         ana_zaman = getattr(self, 'ana_zaman_kolonu', None)
         if ana_zaman is None and len(self.df.columns) > 0:
-            ana_zaman = self.df.columns[0]
+            ana_zaman = zaman_kolonu_tespit_et(self.df)
 
         for col_idx, col_name in enumerate(self.df.columns):
-            # Sadece tek 1 adet ANA ZAMAN sütunu kullanıcıya referans olarak en solda sabit kalsın
-            if col_name == ana_zaman or col_idx == 0:
+            # Sadece tek 1 adet ANA ZAMAN sütunu kullanıcıya referans olarak sabit kalsın
+            if col_name == ana_zaman:
                 self.veri_tablosu.setColumnHidden(col_idx, False)
                 continue
 
@@ -5289,13 +5422,23 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
             
         msg = QtWidgets.QMessageBox(self)
         msg.setWindowTitle("Projeyi Kaydet")
-        msg.setText("Uygulamadan çıkıyorsunuz. Mevcut projeyi (Veriler, Grafik Zoomları, Sayfa 4 Dashboard) kaydetmek ister misiniz?\n\n(Daha sonra kaldığınız yerden devam etmek için 'Evet' diyebilirsiniz.)")
+        msg.setText("Uygulamadan çıkıyorsunuz. Mevcut projeyi kaydetmek ister misiniz?\n\n(Daha sonra kaldığınız yerden devam etmek için 'Evet' diyebilirsiniz.)")
         msg.setIcon(QtWidgets.QMessageBox.Question)
+        
+        btn_vazgec = msg.addButton("Vazgeç", QtWidgets.QMessageBox.ResetRole)
         btn_evet = msg.addButton("Evet", QtWidgets.QMessageBox.YesRole)
         btn_hayir = msg.addButton("Hayır", QtWidgets.QMessageBox.NoRole)
+
+        # Vazgeç butonunu en sola konumlandır
+        bbox = msg.findChild(QtWidgets.QDialogButtonBox)
+        if bbox and bbox.layout():
+            bbox.layout().removeWidget(btn_vazgec)
+            bbox.layout().insertWidget(0, btn_vazgec)
+
         msg.exec_()
         
-        if msg.clickedButton() == btn_evet:
+        tiklanan = msg.clickedButton()
+        if tiklanan == btn_evet:
             kayit_basarili = False
             
             dosya_yolu, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -5316,9 +5459,10 @@ class AnaPencere(QMainWindow, Ui_MainWindow):
                 return
             event.accept()
             
-        elif msg.clickedButton() == btn_hayir:
+        elif tiklanan == btn_hayir:
             event.accept()
         else:
+            # 'Vazgeç' butonu veya diyalog kapatıldığında uygulamadan çıkılmaz, devam edilir
             event.ignore()
 
     def proje_kaydet_yol_ile(self, dosya_yolu):
