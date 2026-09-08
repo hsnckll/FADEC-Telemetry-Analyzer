@@ -7,8 +7,7 @@ a = Analysis(
     datas=[
         ('parameters.json', '.'),
         ('Fadec Kullanım Kılavuzu.pdf', '.'),
-        ('*.ui', '.'),
-        ('*.png', '.')
+        ('*.ui', '.')
     ],
     hiddenimports=[
         'PyQt5',

@@ -114,6 +114,45 @@ from ai import AIPromptBuilder
 from generate_pdf import PDFRaporMotoru
 
 
+def _asagi_ok_ikonlarini_olustur():
+    """
+    @brief ComboBox için gerekli aşağı ok simgelerini geçici sistem dizinine (temp)
+           dinamik olarak çizer ve dosya yollarını döner. Harici PNG dosyalarına olan bağımlılığı ortadan kaldırır.
+    @return tuple (str, str): Koyu ve açık tema için üretilen PNG dosya yolları.
+    """
+    import tempfile
+    temp_dir = tempfile.gettempdir().replace('\\', '/')
+    ok_turkuaz = f"{temp_dir}/fadec_asagi_ok_turkuaz.png"
+    ok_mavi = f"{temp_dir}/fadec_asagi_ok_mavi.png"
+
+    if not os.path.exists(ok_turkuaz):
+        img_turkuaz = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
+        img_turkuaz.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(img_turkuaz)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtGui.QPen(QtGui.QColor("#00ffcc"), 2.5, QtCore.Qt.SolidLine))
+        p.drawLine(3, 6, 8, 11)
+        p.drawLine(8, 11, 13, 6)
+        p.end()
+        img_turkuaz.save(ok_turkuaz)
+
+    if not os.path.exists(ok_mavi):
+        img_mavi = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
+        img_mavi.fill(QtCore.Qt.transparent)
+        p = QtGui.QPainter(img_mavi)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        p.setPen(QtGui.QPen(QtGui.QColor("#0284c7"), 2.5, QtCore.Qt.SolidLine))
+        p.drawLine(3, 6, 8, 11)
+        p.drawLine(8, 11, 13, 6)
+        p.end()
+        img_mavi.save(ok_mavi)
+
+    return ok_turkuaz, ok_mavi
+
+
+_OK_TURKUAZ_YOLU, _OK_MAVI_YOLU = _asagi_ok_ikonlarini_olustur()
+
+
 # ==============================================================================
 # 5. MODERN KOYU TEMA (DARK THEME QSS)
 # ==============================================================================
@@ -227,7 +266,7 @@ QComboBox::drop-down:hover {
     background-color: #333333;
 }
 QComboBox::down-arrow {
-    image: url(asagi_ok.png);
+    image: url(""" + _OK_TURKUAZ_YOLU + """);
     width: 12px;
     height: 12px;
 }
@@ -494,7 +533,7 @@ QComboBox::drop-down:hover {
     background-color: #e2e8f0;
 }
 QComboBox::down-arrow {
-    image: url(asagi_ok_koyu.png);
+    image: url(""" + _OK_MAVI_YOLU + """);
     width: 12px;
     height: 12px;
 }
@@ -6139,32 +6178,6 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     app.setStyleSheet(KOYU_TEMA_QSS)
-
-    # ComboBox için Şık Turkuaz Aşağı Ok İkonu Üret (Koyu Tema)
-    if not os.path.exists("asagi_ok.png"):
-        pix = QtGui.QPixmap(16, 16)
-        pix.fill(QtGui.QColor(0, 0, 0, 0))
-        p = QtGui.QPainter(pix)
-        p.setRenderHint(QtGui.QPainter.Antialiasing)
-        pen = QtGui.QPen(QtGui.QColor("#00ffcc"), 2.5, QtCore.Qt.SolidLine)
-        p.setPen(pen)
-        p.drawLine(3, 6, 8, 11)
-        p.drawLine(8, 11, 13, 6)
-        p.end()
-        pix.save("asagi_ok.png")
-
-    # ComboBox için Koyu Mavi Aşağı Ok İkonu Üret (Açık Tema)
-    if not os.path.exists("asagi_ok_koyu.png"):
-        pix_koyu = QtGui.QPixmap(16, 16)
-        pix_koyu.fill(QtGui.QColor(0, 0, 0, 0))
-        p = QtGui.QPainter(pix_koyu)
-        p.setRenderHint(QtGui.QPainter.Antialiasing)
-        pen = QtGui.QPen(QtGui.QColor("#0284c7"), 2.5, QtCore.Qt.SolidLine)
-        p.setPen(pen)
-        p.drawLine(3, 6, 8, 11)
-        p.drawLine(8, 11, 13, 6)
-        p.end()
-        pix_koyu.save("asagi_ok_koyu.png")
 
     pencere = AnaPencere()
     pencere.show()
